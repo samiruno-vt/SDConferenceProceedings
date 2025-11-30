@@ -7,6 +7,5 @@ torch
 networkx
 plotly
 rapidfuzz
-itertools
 plotly.graph_objects
 IPython.display
