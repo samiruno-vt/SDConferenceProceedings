@@ -1,7 +1,6 @@
 streamlit
 pandas
 numpy
-re
 pyarrow
 sentence-transformers
 torch
