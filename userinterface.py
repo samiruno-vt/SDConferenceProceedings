@@ -122,13 +122,8 @@ if page == "Find Similar Papers":
 # Page 2: Co-author explorer
 # ---------------------------
 
-elif page == "Co-authors of Co-authors":
-    st.header("Co-authors of Co-authors")
-
-    st.markdown(
-        "Search for an author to see their direct co-authors and second-degree "
-        "connections."
-    )
+elif page == "Co-author Explorer":
+    st.header("Co-authors of co-authors")
 
     author_query = st.text_input("Search for an author")
 
@@ -139,38 +134,29 @@ elif page == "Co-authors of Co-authors":
         if not candidates:
             st.info("No matching authors found.")
         else:
-            # candidates is a list of (name, score)
             author_names = [name for name, score in candidates]
-
-            selected_author = st.selectbox(
-                "Select an author:",
-                options=author_names
-            )
+            selected_author = st.selectbox("Select an author:", options=author_names)
 
             author = selected_author
-
             st.markdown(f"**Selected author:** {author}")
 
             co_df, two_df = coauthors.get_coauthors_and_twohop(G, author)
 
             col1, col2 = st.columns(2)
-
             with col1:
                 st.subheader("Direct co-authors")
                 if co_df.empty:
                     st.write("No direct co-authors found.")
                 else:
-                    # You may already have formatting helpers; this is simple display
                     st.dataframe(co_df, use_container_width=True)
 
             with col2:
                 st.subheader("Co-authors of co-authors")
                 if two_df.empty:
-                    st.write("No co-authors of co-authors found.")
+                    st.write("No 2nd-degree co-authors found.")
                 else:
                     st.dataframe(two_df, use_container_width=True)
 
-            # Network plot
             T = coauthors.build_hierarchical_tree(G, author)
             if T.number_of_nodes() == 0:
                 st.info("No co-author network to display for this author.")
@@ -179,4 +165,5 @@ elif page == "Co-authors of Co-authors":
                 fig = coauthors.plot_hierarchical_tree(T, pos, author)
                 st.subheader("Co-author network")
                 st.plotly_chart(fig, use_container_width=True)
+
 
