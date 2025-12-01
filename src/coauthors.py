@@ -150,17 +150,17 @@ def plot_hierarchical_tree(T, pos, author):
         labels.append(n)
         lvl = data.get("level", 0)
         if n == author:
-            colors.append("#ff6666")
+            colors.append("red")
             sizes.append(26)
-            fs.append(20)
+            fs.append(26)
         elif lvl == 1:
-            colors.append("#66b3ff")
-            sizes.append(18)
-            fs.append(14)
+            colors.append("green")
+            sizes.append(26)
+            fs.append(26)
         else:
-            colors.append("#cfcfcf")
-            sizes.append(14)
-            fs.append(12)
+            colors.append("blue")
+            sizes.append(26)
+            fs.append(26)
 
     node_trace = go.Scatter(
         x=node_x, y=node_y,
@@ -172,8 +172,8 @@ def plot_hierarchical_tree(T, pos, author):
         cliponaxis=False,
         marker=dict(
             size=sizes,
-            color=colors,
-            line=dict(width=1, color="#333333")
+            color="black",
+            line=dict(width=1, color="grey")
         )
     )
 
