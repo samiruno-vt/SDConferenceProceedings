@@ -48,7 +48,7 @@ st.set_page_config(page_title="System Dynamics Paper Explorer", layout="wide")
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to:",
-    ["Find Similar Papers", "Co-author Explorer"]
+    ["Find Similar Papers", "Find Co-authors"]
 )
 
 
@@ -122,7 +122,7 @@ if page == "Find Similar Papers":
 # Page 2: Co-author explorer
 # ---------------------------
 
-elif page == "Co-author Explorer":
+elif page == "Find Co-authors":
     st.header("Co-authors of co-authors")
 
     author_query = st.text_input("Search for an author")
