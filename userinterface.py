@@ -21,22 +21,32 @@ import coauthors  # src/coauthors.py
 
 @st.cache_data
 def load_dataframe():
-    return pd.read_parquet(os.path.join("data", "papers_clean.parquet"))
+    return pd.read_parquet(os.path.join("data", "papers_clean_from05_withThreads.parquet"))
 
 @st.cache_resource
 def load_embeddings():
-    return np.load(os.path.join("data", "paper_embeddings.npy"))
+    return np.load(os.path.join("data", "paper_embeddings_from05.npy"))
 
 @st.cache_resource
 def load_graph():
-    with open(os.path.join("data", "coauthor_graph.pkl"), "rb") as f:
+    with open(os.path.join("data", "coauthor_graph_from05_withNodesCountryOrg.pkl"), "rb") as f:
         G = pickle.load(f)
     return G
+
+@st.cache_data
+def load_author_stats():
+    return pd.read_parquet(os.path.join("data", "author_stats_from05_withCountryOrg.parquet"))
 
 
 df = load_dataframe()
 embeddings = load_embeddings()
 G = load_graph()
+
+
+st.sidebar.write(f"Papers: {len(df)}")
+st.sidebar.write(f"Years: {int(df['Year'].min())}–{int(df['Year'].max())}")
+st.sidebar.write(f"Authors: {G.number_of_nodes()}")
+
 
 
 # -------------------
