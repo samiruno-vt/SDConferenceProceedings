@@ -4,6 +4,9 @@ import pickle
 import numpy as np
 import pandas as pd
 import streamlit as st
+import networkx as nx
+import plotly.graph_objects as go
+
 
 # Make sure import from src/ works
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -195,3 +198,89 @@ elif page == "Network Overview":
             cols.append(extra)
 
     st.dataframe(tbl[cols], use_container_width=True)
+
+    st.subheader("Network (Top authors only)")
+
+    max_nodes = st.slider("Max nodes to display", 50, 400, 150)
+    size_mode = st.radio("Node size based on", ["NumPapers", "NumCoauthors"], horizontal=True)
+
+    # pick top authors to display
+    top_authors = (
+        author_stats.sort_values([size_mode], ascending=False)
+               .head(max_nodes)["Author"]
+               .tolist()
+                )
+
+    H = G.subgraph(top_authors).copy()
+
+    if H.number_of_nodes() == 0:
+        st.info("No nodes to display.")
+    else:
+        # layout (force-directed)
+        pos = nx.spring_layout(H, seed=42, k=None)
+
+    # edges
+    edge_x, edge_y = [], []
+    for u, v in H.edges():
+        x0, y0 = pos[u]
+        x1, y1 = pos[v]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        mode="lines",
+        line=dict(width=1, color="#bbbbbb"),
+        hoverinfo="none"
+    )
+
+    # node sizes
+    def node_size(n):
+        val = H.nodes[n].get("num_papers" if size_mode == "NumPapers" else "num_coauthors", 0)
+        # sqrt scaling so big nodes don't dominate
+        return 6 + (val ** 0.5) * 2.5
+
+    node_x, node_y, node_text, node_sizes = [], [], [], []
+    for n in H.nodes():
+        x, y = pos[n]
+        node_x.append(x)
+        node_y.append(y)
+        node_sizes.append(node_size(n))
+
+        npapers = H.nodes[n].get("num_papers", 0)
+        nco = H.nodes[n].get("num_coauthors", 0)
+        country = H.nodes[n].get("country")
+        org = H.nodes[n].get("organization")
+
+        hover = f"{n}<br>Papers: {npapers}<br>Coauthors: {nco}"
+        if country:
+            hover += f"<br>Country: {country}"
+        if org:
+            hover += f"<br>Org: {org}"
+        node_text.append(hover)
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode="markers",
+        hoverinfo="text",
+        text=node_text,
+        marker=dict(
+            size=node_sizes,
+            color="#1f77b4",
+            line=dict(width=1, color="#333333")
+        )
+    )
+
+    fig = go.Figure(data=[edge_trace, node_trace])
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=750,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"Showing {H.number_of_nodes()} authors and {H.number_of_edges()} coauthorship links.")
+
+
