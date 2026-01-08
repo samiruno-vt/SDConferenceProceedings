@@ -240,12 +240,36 @@ elif page == "Network Overview":
 
     # pick top authors to display
     top_authors = (
-        author_stats.sort_values([size_mode], ascending=False)
-               .head(max_nodes)["Author"]
-               .tolist()
-                )
+    tbl[tbl["NumPapers_Filtered"] > 0]
+      .sort_values(["NumPapers_Filtered", "NumCoauthors"], ascending=False)
+      .head(max_nodes)["Author"]
+      .tolist()
+    )
 
-    H = G.subgraph(top_authors).copy()
+
+    # Build year-filtered coauthor edges
+    edges_filtered = set()
+
+    for _, row in df[df["Year"].between(year_min, year_max)].iterrows():
+        authors = [a.strip() for a in coauthors.parse_authors(row["Authors"]) if a.strip()]
+        for i, a in enumerate(authors):
+            for b in authors[i+1:]:
+                edges_filtered.add((a, b))
+                edges_filtered.add((b, a))
+
+    H = nx.Graph()
+
+    # add nodes first
+    for a in top_authors:
+        if a in G:
+            H.add_node(a, **G.nodes[a])
+
+    # add only year-valid edges
+    for a, b in edges_filtered:
+        if a in H and b in H:
+            if G.has_edge(a, b):
+                H.add_edge(a, b)
+
 
     if H.number_of_nodes() == 0:
         st.info("No nodes to display.")
