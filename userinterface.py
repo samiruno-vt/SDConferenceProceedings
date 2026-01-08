@@ -197,7 +197,7 @@ elif page == "Network Overview":
 
     # explode authors only for filtering
     ap = df.loc[df["Year"].between(year_min, year_max), ["Authors"]].copy()
-    ap["Author"] = ap["Authors"].apply(parse_authors)
+    ap["Author"] = ap["Authors"].apply(coauthors.parse_authors)
     ap = ap.explode("Author")
     ap["Author"] = ap["Author"].astype(str).str.strip()
     ap = ap[ap["Author"] != ""]
