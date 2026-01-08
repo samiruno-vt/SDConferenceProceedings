@@ -59,7 +59,7 @@ st.set_page_config(page_title="System Dynamics Paper Explorer", layout="wide")
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to:",
-    ["Find Similar Papers", "Find Co-authors"]
+    ["Find Similar Papers", "Find Co-authors", "Network Overview"]
 )
 
 
