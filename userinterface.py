@@ -188,16 +188,50 @@ elif page == "Find Co-authors":
 elif page == "Network Overview":
     st.header("Network Overview")
 
-    top_n = st.slider("Top N authors (by number of papers)", 10, 200, 50)
+    year_min, year_max = st.slider(
+    "Filter authors by year range",
+    min_value=int(df["Year"].min()),
+    max_value=int(df["Year"].max()),
+    value=(int(df["Year"].min()), int(df["Year"].max())),
+    )
 
-    tbl = author_stats.sort_values(["NumPapers", "NumCoauthors"], ascending=False).head(top_n)
+    # explode authors only for filtering
+    ap = df.loc[df["Year"].between(year_min, year_max), ["Authors"]].copy()
+    ap["Author"] = ap["Authors"].apply(parse_authors)
+    ap = ap.explode("Author")
+    ap["Author"] = ap["Author"].astype(str).str.strip()
+    ap = ap[ap["Author"] != ""]
 
-    cols = ["Author", "NumPapers", "NumCoauthors"]
+    author_counts = (
+    ap.groupby("Author")
+      .size()
+      .rename("NumPapers_Filtered")
+      .reset_index()
+    )
+
+    tbl = author_stats.merge(
+    author_counts,
+    on="Author",
+    how="left"
+    )
+
+    tbl["NumPapers_Filtered"] = tbl["NumPapers_Filtered"].fillna(0).astype(int)
+
+
+    top_n = st.slider("Top N authors (by papers in selected years)", 10, 200, 50)
+
+    tbl_show = (
+        tbl.sort_values(["NumPapers_Filtered", "NumCoauthors"], ascending=False)
+       .head(top_n)
+    )
+
+    cols = ["Author", "NumPapers_Filtered", "NumPapers", "NumCoauthors"]
     for extra in ["Country", "Organization"]:
-        if extra in tbl.columns:
+        if extra in tbl_show.columns:
             cols.append(extra)
 
-    st.dataframe(tbl[cols], use_container_width=True)
+    st.dataframe(tbl_show[cols], use_container_width=True)
+
 
     st.subheader("Network (Top authors only)")
 
