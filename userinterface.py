@@ -41,6 +41,7 @@ def load_author_stats():
 df = load_dataframe()
 embeddings = load_embeddings()
 G = load_graph()
+author_stats = load_author_stats()
 
 
 st.sidebar.write(f"Papers: {len(df)}")
@@ -177,3 +178,20 @@ elif page == "Find Co-authors":
                 st.plotly_chart(fig, use_container_width=True)
 
 
+# ---------------------------
+# Page 3: Network Overview
+# ---------------------------
+
+elif page == "Network Overview":
+    st.header("Network Overview")
+
+    top_n = st.slider("Top N authors (by number of papers)", 10, 200, 50)
+
+    tbl = author_stats.sort_values(["NumPapers", "NumCoauthors"], ascending=False).head(top_n)
+
+    cols = ["Author", "NumPapers", "NumCoauthors"]
+    for extra in ["Country", "Organization"]:
+        if extra in tbl.columns:
+            cols.append(extra)
+
+    st.dataframe(tbl[cols], use_container_width=True)
