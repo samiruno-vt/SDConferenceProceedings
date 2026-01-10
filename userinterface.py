@@ -108,15 +108,15 @@ with tab1:
     st.header("Find Similar Papers")
 
     st.markdown(
-        "Search by **title** or **author name**, then pick a paper to see similar ones "
+        "Search by **title**, **author name**, or **abstract**, then pick a paper to see similar ones "
         "based on titles and abstracts."
     )
 
-    query = st.text_input("Search for a paper (title or author)")
+    query = st.text_input("Search for a paper (title, author, or abstract)")
 
     if query:
         # search_papers should return a DataFrame with columns: row_idx, Title, Year, Authors
-        candidates = papers.search_papers(query, df, search_in=("Title", "Authors"), limit=20)
+        candidates = papers.search_papers(query, df, search_in=("Title", "Authors", "Abstract"), limit=20)
 
         if candidates.empty:
             st.info("No papers found for that search.")
