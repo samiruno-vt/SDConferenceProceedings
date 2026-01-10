@@ -188,12 +188,38 @@ elif page == "Find Co-authors":
 elif page == "Network Overview":
     st.header("Network Overview")
 
-    year_min, year_max = st.slider(
-    "Filter authors by year range",
-    min_value=int(df["Year"].min()),
-    max_value=int(df["Year"].max()),
-    value=(int(df["Year"].min()), int(df["Year"].max())),
-    )
+    # --- Filters section ---
+    st.subheader("Filters")
+    
+    col_year, col_papers, col_coauthors = st.columns(3)
+    
+    with col_year:
+        year_min, year_max = st.slider(
+            "Year range",
+            min_value=int(df["Year"].min()),
+            max_value=int(df["Year"].max()),
+            value=(int(df["Year"].min()), int(df["Year"].max())),
+        )
+    
+    with col_papers:
+        min_papers = st.number_input(
+            "Min papers (in selected years)",
+            min_value=1,
+            max_value=50,
+            value=1,
+            step=1,
+            help="Only show authors with at least this many papers in the selected year range"
+        )
+    
+    with col_coauthors:
+        min_coauthors = st.number_input(
+            "Min co-authors (overall)",
+            min_value=0,
+            max_value=50,
+            value=0,
+            step=1,
+            help="Only show authors with at least this many total co-authors"
+        )
 
     # explode authors only for filtering
     ap = df.loc[df["Year"].between(year_min, year_max), ["Authors"]].copy()
@@ -203,22 +229,32 @@ elif page == "Network Overview":
     ap = ap[ap["Author"] != ""]
 
     author_counts = (
-    ap.groupby("Author")
-      .size()
-      .rename("NumPapers_Filtered")
-      .reset_index()
+        ap.groupby("Author")
+          .size()
+          .rename("NumPapers_Filtered")
+          .reset_index()
     )
 
     tbl = author_stats.merge(
-    author_counts,
-    on="Author",
-    how="left"
+        author_counts,
+        on="Author",
+        how="left"
     )
 
     tbl["NumPapers_Filtered"] = tbl["NumPapers_Filtered"].fillna(0).astype(int)
 
+    # Apply the min papers and min coauthors filters
+    tbl = tbl[
+        (tbl["NumPapers_Filtered"] >= min_papers) &
+        (tbl["NumCoauthors"] >= min_coauthors)
+    ]
 
-    top_n = st.slider("Top N authors (by papers in selected years)", 10, 200, 50)
+    st.divider()
+    
+    # --- Author table section ---
+    st.subheader("Top Authors")
+    st.caption(f"**{len(tbl)}** authors match the current filters")
+    top_n = st.slider("Number of authors to show", 10, 200, 50)
 
     tbl_show = (
         tbl.sort_values(["NumPapers_Filtered", "NumCoauthors"], ascending=False)
@@ -238,12 +274,11 @@ elif page == "Network Overview":
     max_nodes = st.slider("Max nodes to display", 50, 400, 150)
     size_mode = st.radio("Node size based on", ["NumPapers", "NumCoauthors"], horizontal=True)
 
-    # pick top authors to display
+    # pick top authors to display (from already-filtered tbl)
     top_authors = (
-    tbl[tbl["NumPapers_Filtered"] > 0]
-      .sort_values(["NumPapers_Filtered", "NumCoauthors"], ascending=False)
-      .head(max_nodes)["Author"]
-      .tolist()
+        tbl.sort_values(["NumPapers_Filtered", "NumCoauthors"], ascending=False)
+           .head(max_nodes)["Author"]
+           .tolist()
     )
 
 
