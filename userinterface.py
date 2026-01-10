@@ -111,6 +111,7 @@ if page == "Find Similar Papers":
             st.markdown("**Selected paper**")
             st.markdown(f"**Title:** {selected_paper['Title']}")
             st.markdown(f"**Year:** {selected_paper['Year']}")
+            st.markdown(f"**Thread:** {selected_paper.get('Category', 'N/A')}")
             st.markdown(f"**Authors:** {selected_paper['Authors']}")
             if "Abstract" in df.columns:
                 st.markdown("**Abstract:**")
