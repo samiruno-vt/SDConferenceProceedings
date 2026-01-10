@@ -84,12 +84,12 @@ def get_coauthors_by_degree(G, author, max_degree=2):
                 w = G[author][nbr].get("weight", 1)
                 degree_data.append((nbr, w))
             degree_data.sort(key=lambda x: (-x[1], x[0]))
-            df = pd.DataFrame(degree_data, columns=["Coauthor", "NumSharedPapers"])
+            df = pd.DataFrame(degree_data, columns=["Co-author", "Shared Papers"])
         else:
             for nbr in sorted(next_level):
                 degree_data.append((nbr, path_counts[nbr]))
             degree_data.sort(key=lambda x: (-x[1], x[0]))
-            df = pd.DataFrame(degree_data, columns=["Author", "NumPaths"])
+            df = pd.DataFrame(degree_data, columns=["Author", "Connections"])
         
         results.append(df)
         visited.update(next_level)
