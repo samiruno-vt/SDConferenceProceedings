@@ -122,49 +122,58 @@ with tab1:
             st.info("No papers found for that search.")
         else:
             st.subheader("Matching papers")
-
-            # Allow user to pick one paper from candidates
-            options = candidates.index.tolist()
-
-            def format_paper_option(i):
-                row = candidates.loc[i]
-                year = int(row["Year"]) if not pd.isna(row["Year"]) else "NA"
-                return f"{row['Title']} ({year})"
-
-            selected_idx = st.selectbox(
-                "Select a paper:",
-                options=options,
-                format_func=format_paper_option,
+            st.caption("Click on a row to select a paper")
+            
+            # Prepare display dataframe
+            display_df = candidates[["Title", "Year", "Authors"]].copy()
+            display_df.index = range(1, len(display_df) + 1)  # Start numbering at 1
+            
+            # Clickable dataframe for selection
+            selection = st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=False,
+                on_select="rerun",
+                selection_mode="single-row",
             )
+            
+            # Get selected row
+            selected_rows = selection.selection.rows if selection.selection else []
+            
+            if selected_rows:
+                selected_idx = selected_rows[0]  # Get first (only) selected row
+                
+                # Get the underlying row index into df
+                paper_row_idx = int(candidates.iloc[selected_idx]["row_idx"])
 
-            # Get the underlying row index into df
-            paper_row_idx = int(candidates.loc[selected_idx, "row_idx"])
+                # Show selected paper details
+                selected_paper = df.loc[paper_row_idx]
+                st.markdown("---")
+                st.markdown("**Selected paper**")
+                st.markdown(f"**Title:** {selected_paper['Title']}")
+                st.markdown(f"**Year:** {selected_paper['Year']}")
+                st.markdown(f"**Thread:** {selected_paper.get('Category', 'N/A')}")
+                st.markdown(f"**Authors:** {selected_paper['Authors']}")
+                if "Abstract" in df.columns:
+                    st.markdown("**Abstract:**")
+                    st.write(selected_paper["Abstract"])
 
-            # Show selected paper details
-            selected_paper = df.loc[paper_row_idx]
-            st.markdown("**Selected paper**")
-            st.markdown(f"**Title:** {selected_paper['Title']}")
-            st.markdown(f"**Year:** {selected_paper['Year']}")
-            st.markdown(f"**Thread:** {selected_paper.get('Category', 'N/A')}")
-            st.markdown(f"**Authors:** {selected_paper['Authors']}")
-            if "Abstract" in df.columns:
-                st.markdown("**Abstract:**")
-                st.write(selected_paper["Abstract"])
+                # Get similar papers
+                k = st.radio("Number of similar papers to show", [5, 10, 15, 20], index=1, horizontal=True)
+                sim_tbl = papers.get_similar_papers(
+                    paper_idx=paper_row_idx,
+                    embeddings=embeddings,
+                    df=df,
+                    k=k
+                )
 
-            # Get similar papers
-            k = st.slider("Number of similar papers to show", 3, 20, 10)
-            sim_tbl = papers.get_similar_papers(
-                paper_idx=paper_row_idx,
-                embeddings=embeddings,
-                df=df,
-                k=k
-            )
-
-            st.subheader("Similar papers")
-            if sim_tbl.empty:
-                st.info("No similar papers found.")
-            else:
-                st.dataframe(sim_tbl, use_container_width=True)
+                st.subheader("Similar papers")
+                if sim_tbl.empty:
+                    st.info("No similar papers found.")
+                else:
+                    # Fix index to start at 1
+                    sim_tbl.index = range(1, len(sim_tbl) + 1)
+                    st.dataframe(sim_tbl, use_container_width=True)
 
 
 # ---------------------------
@@ -178,23 +187,23 @@ with tab2:
 
     if author_query:
         all_authors = sorted(G.nodes())
-        candidates = coauthors.search_authors(author_query, all_authors, limit=20, score_cutoff=60)
+        candidates = coauthors.search_authors(author_query, all_authors, limit=10, score_cutoff=60)
 
         if not candidates:
             st.info("No matching authors found.")
         else:
             author_names = [name for name, score in candidates]
-            selected_author = st.selectbox("Select an author:", options=author_names)
+            selected_author = st.radio("Select an author:", options=author_names)
 
             author = selected_author
             st.markdown(f"**Selected author:** {author}")
             
-            # Degrees selector
-            max_degree = st.slider(
+            # Degrees selector - horizontal radio buttons
+            max_degree = st.radio(
                 "Degrees of separation",
-                min_value=1,
-                max_value=4,
-                value=2,
+                options=[1, 2, 3, 4],
+                index=1,  # Default to 2
+                horizontal=True,
                 help="1 = direct co-authors only, 2 = co-authors of co-authors, etc."
             )
 
