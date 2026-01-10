@@ -57,7 +57,7 @@ def get_similar_papers(
 
     candidate_idxs = np.where(mask)[0]
     if len(candidate_idxs) == 0:
-        return df.head(0)[["Title", "Year", "Abstract", "Authors"]]
+        return df.head(0)[["Title", "Year", "Abstract", "Authors", "Category"]].rename(columns={"Category": "Thread"})
 
     scores = embeddings[candidate_idxs] @ q  # cosine similarity
 
@@ -66,7 +66,10 @@ def get_similar_papers(
     top_idxs = candidate_idxs[top_local]
 
     # Build results
-    result = df.loc[top_idxs, ["Title", "Year", "Abstract", "Authors"]].copy()
+    result = df.loc[top_idxs, ["Title", "Year", "Abstract", "Authors", "Category"]].copy()
+    
+    # Rename Category to Thread for display
+    result = result.rename(columns={"Category": "Thread"})
 
     # Reset index so no row_idx/index shows up in the table
     result = result.reset_index(drop = True)
