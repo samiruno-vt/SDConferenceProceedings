@@ -53,11 +53,67 @@ author_stats = load_author_stats()
 
 st.set_page_config(page_title="SD Conference Proceedings", layout="wide")
 
-# Custom CSS for white background
+# Custom CSS for clean white theme
 st.markdown("""
     <style>
+    /* Main background */
     .stApp {
         background-color: white;
+    }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+    }
+    
+    /* Text inputs, selectboxes, multiselects */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div {
+        background-color: white !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    /* Slider */
+    .stSlider > div > div {
+        background-color: white !important;
+    }
+    
+    /* Number input */
+    .stNumberInput > div > div > input {
+        background-color: white !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    /* DataFrames/Tables */
+    .stDataFrame, [data-testid="stDataFrame"] {
+        background-color: white !important;
+    }
+    
+    /* All text should be dark */
+    .stMarkdown, .stText, p, span, label, .stCaption {
+        color: #333 !important;
+    }
+    
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        color: #333 !important;
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: white;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        color: #333 !important;
+    }
+    
+    /* Checkbox */
+    .stCheckbox label {
+        color: #333 !important;
     }
     </style>
 """, unsafe_allow_html=True)
