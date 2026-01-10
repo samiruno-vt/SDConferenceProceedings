@@ -221,8 +221,38 @@ elif page == "Network Overview":
             help="Only show authors with at least this many total co-authors"
         )
 
+    # Thread filter (uses Category column)
+    all_threads = sorted([t for t in df["Category"].dropna().unique() if t])
+    selected_threads = st.multiselect(
+        "Thread (leave empty for all)",
+        options=all_threads,
+        default=[],
+        help="Filter to authors who have papers in these threads. Leave empty to include all papers."
+    )
+    
+    include_no_thread = st.checkbox(
+        "Include papers without a thread",
+        value=True,
+        help="Include papers that don't have a thread assigned"
+    )
+
+    # Apply year filter first
+    df_filtered = df[df["Year"].between(year_min, year_max)].copy()
+    
+    # Apply thread filter if any threads are selected
+    if selected_threads:
+        if include_no_thread:
+            df_filtered = df_filtered[
+                df_filtered["Category"].isin(selected_threads) | df_filtered["Category"].isna()
+            ]
+        else:
+            df_filtered = df_filtered[df_filtered["Category"].isin(selected_threads)]
+    elif not include_no_thread:
+        # No threads selected but excluding papers without thread
+        df_filtered = df_filtered[df_filtered["Category"].notna()]
+
     # explode authors only for filtering
-    ap = df.loc[df["Year"].between(year_min, year_max), ["Authors"]].copy()
+    ap = df_filtered[["Authors"]].copy()
     ap["Author"] = ap["Authors"].apply(coauthors.parse_authors)
     ap = ap.explode("Author")
     ap["Author"] = ap["Author"].astype(str).str.strip()
@@ -253,7 +283,7 @@ elif page == "Network Overview":
     
     # --- Author table section ---
     st.subheader("Top Authors")
-    st.caption(f"**{len(tbl)}** authors match the current filters")
+    st.caption(f"**{len(tbl)}** authors match the current filters (from **{len(df_filtered)}** papers)")
     top_n = st.slider("Number of authors to show", 10, 200, 50)
 
     tbl_show = (
@@ -282,10 +312,10 @@ elif page == "Network Overview":
     )
 
 
-    # Build year-filtered coauthor edges
+    # Build filtered coauthor edges (using df_filtered which has year + thread filters applied)
     edges_filtered = set()
 
-    for _, row in df[df["Year"].between(year_min, year_max)].iterrows():
+    for _, row in df_filtered.iterrows():
         authors = [a.strip() for a in coauthors.parse_authors(row["Authors"]) if a.strip()]
         for i, a in enumerate(authors):
             for b in authors[i+1:]:
