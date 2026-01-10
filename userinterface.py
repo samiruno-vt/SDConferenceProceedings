@@ -236,6 +236,27 @@ elif page == "Network Overview":
         help="Include papers that don't have a thread assigned"
     )
 
+    # Country and Organization filters
+    col_country, col_org = st.columns(2)
+    
+    with col_country:
+        all_countries = sorted([c for c in author_stats["Country"].dropna().unique() if c])
+        selected_countries = st.multiselect(
+            "Author country (leave empty for all)",
+            options=all_countries,
+            default=[],
+            help="Filter to authors from these countries. Leave empty to include all authors."
+        )
+    
+    with col_org:
+        all_orgs = sorted([o for o in author_stats["Organization"].dropna().unique() if o])
+        selected_orgs = st.multiselect(
+            "Author organization (leave empty for all)",
+            options=all_orgs,
+            default=[],
+            help="Filter to authors from these organizations. Leave empty to include all authors."
+        )
+
     # Apply year filter first
     df_filtered = df[df["Year"].between(year_min, year_max)].copy()
     
@@ -278,6 +299,14 @@ elif page == "Network Overview":
         (tbl["NumPapers_Filtered"] >= min_papers) &
         (tbl["NumCoauthors"] >= min_coauthors)
     ]
+    
+    # Apply country filter
+    if selected_countries:
+        tbl = tbl[tbl["Country"].isin(selected_countries)]
+    
+    # Apply organization filter
+    if selected_orgs:
+        tbl = tbl[tbl["Organization"].isin(selected_orgs)]
 
     st.divider()
     
