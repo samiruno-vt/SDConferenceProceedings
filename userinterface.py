@@ -222,7 +222,10 @@ with tab2:
                             st.write(f"No {degree_labels[i].lower()} co-authors found.")
                         else:
                             st.caption(f"{len(degree_df)} authors")
-                            st.dataframe(degree_df, use_container_width=True)
+                            # Fix index to start at 1
+                            degree_df_display = degree_df.copy()
+                            degree_df_display.index = range(1, len(degree_df_display) + 1)
+                            st.dataframe(degree_df_display, use_container_width=True)
 
             # Network visualization
             H = coauthors.build_coauthor_network(G, author, max_degree=max_degree)
@@ -384,13 +387,22 @@ with tab3:
         if extra in tbl_show.columns:
             cols.append(extra)
 
-    st.dataframe(tbl_show[cols], use_container_width=True)
+    # Rename columns for display
+    tbl_display = tbl_show[cols].copy()
+    tbl_display = tbl_display.rename(columns={
+        "NumPapers_Filtered": "Papers (filtered)",
+        "NumPapers": "Total Papers",
+        "NumCoauthors": "Co-authors"
+    })
+    tbl_display.index = range(1, len(tbl_display) + 1)  # Start at 1
+    
+    st.dataframe(tbl_display, use_container_width=True)
 
 
     st.subheader("Network (Top authors only)")
 
     max_nodes = st.slider("Max nodes to display", 50, 400, 150)
-    size_mode = st.radio("Node size based on", ["NumPapers", "NumCoauthors"], horizontal=True)
+    size_mode = st.radio("Node size based on", ["Total Papers", "Co-authors"], horizontal=True)
 
     # pick top authors to display (from already-filtered tbl)
     top_authors = (
@@ -447,7 +459,7 @@ with tab3:
 
     # node sizes
     def node_size(n):
-        val = H.nodes[n].get("num_papers" if size_mode == "NumPapers" else "num_coauthors", 0)
+        val = H.nodes[n].get("num_papers" if size_mode == "Total Papers" else "num_coauthors", 0)
         # sqrt scaling so big nodes don't dominate
         return 6 + (val ** 0.5) * 2.5
 
