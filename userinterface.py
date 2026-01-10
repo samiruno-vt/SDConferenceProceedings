@@ -53,67 +53,31 @@ author_stats = load_author_stats()
 
 st.set_page_config(page_title="SD Conference Proceedings", layout="wide")
 
-# Custom CSS for clean white theme
+# Custom CSS for tab styling
 st.markdown("""
     <style>
-    /* Main background */
-    .stApp {
-        background-color: white;
-    }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-    }
-    
-    /* Text inputs, selectboxes, multiselects */
-    .stTextInput > div > div > input,
-    .stSelectbox > div > div,
-    .stMultiSelect > div > div {
-        background-color: white !important;
-        color: black !important;
-        border: 1px solid #ccc !important;
-    }
-    
-    /* Slider */
-    .stSlider > div > div {
-        background-color: white !important;
-    }
-    
-    /* Number input */
-    .stNumberInput > div > div > input {
-        background-color: white !important;
-        color: black !important;
-        border: 1px solid #ccc !important;
-    }
-    
-    /* DataFrames/Tables */
-    .stDataFrame, [data-testid="stDataFrame"] {
-        background-color: white !important;
-    }
-    
-    /* All text should be dark */
-    .stMarkdown, .stText, p, span, label, .stCaption {
-        color: #333 !important;
-    }
-    
-    /* Headers */
-    h1, h2, h3, h4, h5, h6 {
-        color: #333 !important;
-    }
-    
-    /* Tabs */
+    /* Make tabs more prominent */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: white;
+        gap: 8px;
+        background-color: #f0f2f6;
+        padding: 10px;
+        border-radius: 10px;
     }
     
     .stTabs [data-baseweb="tab"] {
-        color: #333 !important;
+        height: 50px;
+        padding-left: 20px;
+        padding-right: 20px;
+        background-color: white;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        font-weight: 500;
     }
     
-    /* Checkbox */
-    .stCheckbox label {
-        color: #333 !important;
+    .stTabs [aria-selected="true"] {
+        background-color: #1f77b4 !important;
+        color: white !important;
+        border: none;
     }
     </style>
 """, unsafe_allow_html=True)
