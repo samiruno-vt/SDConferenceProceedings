@@ -47,30 +47,44 @@ G = load_graph()
 author_stats = load_author_stats()
 
 
-st.sidebar.write(f"Papers: {len(df)}")
+# -------------------
+# Page config and styling
+# -------------------
+
+st.set_page_config(page_title="SD Conference Proceedings", layout="wide")
+
+# Custom CSS for white background
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: white;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Main title
+st.title("International System Dynamics Conference Proceedings")
+
+# Sidebar title and stats
+st.sidebar.title("International System Dynamics Conference Proceedings")
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Dataset Overview**")
+st.sidebar.write(f"Papers: {len(df):,}")
 st.sidebar.write(f"Years: {int(df['Year'].min())}–{int(df['Year'].max())}")
-st.sidebar.write(f"Authors: {G.number_of_nodes()}")
-
-
+st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 
 # -------------------
-# Sidebar navigation
+# Tab navigation
 # -------------------
 
-st.set_page_config(page_title="System Dynamics Paper Explorer", layout="wide")
-
-st.sidebar.title("Navigation")
-page = st.sidebar.radio(
-    "Go to:",
-    ["Find Similar Papers", "Find Co-authors", "Network Overview"]
-)
+tab1, tab2, tab3 = st.tabs(["Find Similar Papers", "Find Co-authors", "Network Overview"])
 
 
 # -----------------------
 # Page 1: Similar papers
 # -----------------------
 
-if page == "Find Similar Papers":
+with tab1:
     st.header("Find Similar Papers")
 
     st.markdown(
@@ -137,7 +151,7 @@ if page == "Find Similar Papers":
 # Page 2: Co-author explorer
 # ---------------------------
 
-elif page == "Find Co-authors":
+with tab2:
     st.header("Co-author Network Explorer")
 
     author_query = st.text_input("Search for an author")
@@ -172,14 +186,14 @@ elif page == "Find Co-authors":
                 degree_labels = ["1st degree (direct)", "2nd degree", "3rd degree", "4th degree"]
                 cols = st.columns(min(len(degree_dfs), 4))
                 
-                for i, (col, df) in enumerate(zip(cols, degree_dfs)):
+                for i, (col, degree_df) in enumerate(zip(cols, degree_dfs)):
                     with col:
                         st.subheader(degree_labels[i])
-                        if df.empty:
+                        if degree_df.empty:
                             st.write(f"No {degree_labels[i].lower()} co-authors found.")
                         else:
-                            st.caption(f"{len(df)} authors")
-                            st.dataframe(df, use_container_width=True)
+                            st.caption(f"{len(degree_df)} authors")
+                            st.dataframe(degree_df, use_container_width=True)
 
             # Network visualization
             H = coauthors.build_coauthor_network(G, author, max_degree=max_degree)
@@ -201,7 +215,7 @@ elif page == "Find Co-authors":
 # Page 3: Network Overview
 # ---------------------------
 
-elif page == "Network Overview":
+with tab3:
     st.header("Network Overview")
 
     # --- Filters section ---
