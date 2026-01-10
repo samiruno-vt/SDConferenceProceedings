@@ -46,12 +46,67 @@ def search_authors(query, all_authors, limit=10, score_cutoff=60):
 # Co-author tables
 # ------------------------
 
+def get_coauthors_by_degree(G, author, max_degree=2):
+    """
+    Get co-authors up to max_degree hops from author.
+    Returns a list of DataFrames, one per degree level.
+    
+    Each DataFrame has columns appropriate to the degree:
+      - Degree 1: Coauthor, NumSharedPapers
+      - Degree 2+: Author, NumPaths (number of shortest paths from root author)
+    """
+    if author not in G:
+        return []
+    
+    results = []
+    visited = {author}
+    current_level = {author}
+    
+    for degree in range(1, max_degree + 1):
+        next_level = set()
+        degree_data = []
+        
+        for node in current_level:
+            for nbr in G.neighbors(node):
+                if nbr not in visited:
+                    next_level.add(nbr)
+        
+        # Count paths to each node at this degree
+        path_counts = {}
+        for node in next_level:
+            # Count how many nodes from previous level connect to this node
+            count = sum(1 for prev in current_level if G.has_edge(prev, node))
+            path_counts[node] = count
+        
+        # For degree 1, include edge weight (shared papers)
+        if degree == 1:
+            for nbr in sorted(next_level):
+                w = G[author][nbr].get("weight", 1)
+                degree_data.append((nbr, w))
+            degree_data.sort(key=lambda x: (-x[1], x[0]))
+            df = pd.DataFrame(degree_data, columns=["Coauthor", "NumSharedPapers"])
+        else:
+            for nbr in sorted(next_level):
+                degree_data.append((nbr, path_counts[nbr]))
+            degree_data.sort(key=lambda x: (-x[1], x[0]))
+            df = pd.DataFrame(degree_data, columns=["Author", "NumPaths"])
+        
+        results.append(df)
+        visited.update(next_level)
+        current_level = next_level
+    
+    return results
+
+
 def get_coauthors_and_twohop(G, author):
     """
     Direct coauthors and coauthors-of-coauthors from the full graph G.
     Returns two DataFrames with columns:
       co_df:  Coauthor, NumSharedPapers
       two_df: CoauthorOfCoauthor, NumPathsFromAuthor
+    
+    DEPRECATED: Use get_coauthors_by_degree instead.
+    Kept for backwards compatibility.
     """
     if author not in G:
         return pd.DataFrame(), pd.DataFrame()
@@ -81,39 +136,138 @@ def get_coauthors_and_twohop(G, author):
     return co_df, two_df
 
 # ------------------------
-# Tree layout + Plotly figure
+# Network layout + Plotly figure
 # ------------------------
 
+import numpy as np
 import plotly.graph_objects as go
 
-def build_hierarchical_tree(G, author):
+def build_coauthor_network(G, author, max_degree=2):
+    """
+    Build a network of co-authors up to max_degree levels.
+    Returns a graph with 'level' attribute on each node.
+    """
     if author not in G:
-        return nx.DiGraph()
+        return nx.Graph()
 
-    direct = sorted(set(G.neighbors(author)))
-    twohop = set()
-    for co in direct:
-        twohop.update(G.neighbors(co))
-    twohop.discard(author)
-    twohop -= set(direct)
-    twohop = sorted(twohop)
+    H = nx.Graph()
+    H.add_node(author, level=0)
+    
+    visited = {author}
+    current_level_nodes = {author}
+    
+    for degree in range(1, max_degree + 1):
+        next_level_nodes = set()
+        
+        for node in current_level_nodes:
+            for nbr in G.neighbors(node):
+                if nbr not in visited:
+                    next_level_nodes.add(nbr)
+                    H.add_node(nbr, level=degree)
+                    H.add_edge(node, nbr)
+                elif nbr in H:
+                    # Add edge even if already visited (to show all connections)
+                    if not H.has_edge(node, nbr):
+                        H.add_edge(node, nbr)
+        
+        visited.update(next_level_nodes)
+        current_level_nodes = next_level_nodes
+        
+        if not next_level_nodes:
+            break
+    
+    return H
 
-    T = nx.DiGraph()
-    T.add_node(author, level=0)
 
-    for co in direct:
-        T.add_node(co, level=1)
-        T.add_edge(author, co)
+def plot_coauthor_network(H, author):
+    """
+    Plot the co-author network with force-directed layout.
+    Nodes are colored by degree level.
+    """
+    if H.number_of_nodes() == 0:
+        return None
+    
+    # Force-directed layout
+    pos = nx.spring_layout(H, seed=42, k=1.5/np.sqrt(H.number_of_nodes()) if H.number_of_nodes() > 1 else 1)
+    
+    # Draw edges
+    edge_x, edge_y = [], []
+    for u, v in H.edges():
+        x0, y0 = pos[u]
+        x1, y1 = pos[v]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
 
-    for co in direct:
-        for nbr2 in G.neighbors(co):
-            if nbr2 in twohop:
-                T.add_node(nbr2, level=2)
-                T.add_edge(co, nbr2)
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        mode="lines",
+        line=dict(width=0.8, color="#cccccc"),
+        hoverinfo="none"
+    )
 
-    return T
+    # Colors for different levels
+    level_colors = {0: "red", 1: "green", 2: "blue", 3: "orange", 4: "purple"}
+
+    node_x, node_y, node_text, node_colors, node_sizes = [], [], [], [], []
+    for n in H.nodes():
+        x, y = pos[n]
+        node_x.append(x)
+        node_y.append(y)
+        
+        lvl = H.nodes[n].get("level", 0)
+        node_colors.append(level_colors.get(lvl, "gray"))
+        
+        # Size: larger for central author, smaller for outer degrees
+        if lvl == 0:
+            node_sizes.append(20)
+        elif lvl == 1:
+            node_sizes.append(15)
+        else:
+            node_sizes.append(10)
+        
+        node_text.append(f"{n}<br>Degree: {lvl}")
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode="markers+text",
+        text=[n for n in H.nodes()],
+        textposition="top center",
+        textfont=dict(size=9, color="black"),
+        hoverinfo="text",
+        hovertext=node_text,
+        marker=dict(
+            size=node_sizes,
+            color=node_colors,
+            line=dict(width=1, color="white")
+        )
+    )
+
+    fig = go.Figure(data=[edge_trace, node_trace])
+    
+    fig.update_layout(
+        showlegend=False,
+        plot_bgcolor="white",
+        margin=dict(l=20, r=20, t=20, b=20),
+        height=700,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    )
+    
+    return fig
+
+
+# Keep old functions for backwards compatibility
+def build_hierarchical_tree(G, author, max_degree=2):
+    """
+    DEPRECATED: Use build_coauthor_network instead.
+    """
+    return build_coauthor_network(G, author, max_degree)
+
 
 def hierarchical_positions(T, x_gap=1.6, y_gap=1.6):
+    """
+    DEPRECATED: No longer needed with network layout.
+    """
     levels = {}
     for n, data in T.nodes(data=True):
         lvl = data.get("level", 0)
@@ -127,69 +281,9 @@ def hierarchical_positions(T, x_gap=1.6, y_gap=1.6):
             pos[n] = (lvl * x_gap, y)
     return pos
 
+
 def plot_hierarchical_tree(T, pos, author):
-    edge_x, edge_y = [], []
-    for u, v in T.edges():
-        x0, y0 = pos[u]
-        x1, y1 = pos[v]
-        edge_x += [x0, x1, None]
-        edge_y += [y0, y1, None]
-
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        mode="lines",
-        line=dict(width=1, color="#999999"),
-        hoverinfo="none"
-    )
-
-    node_x, node_y, labels, colors, sizes, fs = [], [], [], [], [], []
-    for n, data in T.nodes(data=True):
-        x, y = pos[n]
-        node_x.append(x)
-        node_y.append(y)
-        labels.append(n)
-        lvl = data.get("level", 0)
-        if n == author:
-            colors.append("red")
-            sizes.append(28)
-            fs.append(28)
-        elif lvl == 1:
-            colors.append("green")
-            sizes.append(28)
-            fs.append(28)
-        else:
-            colors.append("blue")
-            sizes.append(28)
-            fs.append(28)
-
-    node_trace = go.Scatter(
-        x=node_x, y=node_y,
-        mode="markers+text",
-        text=labels,
-        textposition="top center",
-        textfont=dict(size=fs, color="black"),
-        hoverinfo="text",
-        cliponaxis=False,
-        marker=dict(
-            size=sizes,
-            color=colors,
-            line=dict(width=1, color="grey")
-        )
-    )
-
-    fig = go.Figure(data=[edge_trace, node_trace])
-
-    xs = [p[0] for p in pos.values()]
-    ys = [p[1] for p in pos.values()]
-    x_min, x_max = min(xs) - 0.8, max(xs) + 0.8
-    y_min, y_max = min(ys) - 1.2, max(ys) + 1.2
-
-    fig.update_layout(
-        showlegend=False,
-        plot_bgcolor="white",
-        margin=dict(l=40, r=40, t=80, b=40),
-        height=700,
-        xaxis=dict(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False),
-    )
-    return fig
+    """
+    DEPRECATED: Use plot_coauthor_network instead.
+    """
+    return plot_coauthor_network(T, author)
