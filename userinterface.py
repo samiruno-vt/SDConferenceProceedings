@@ -137,7 +137,7 @@ if page == "Find Similar Papers":
 # ---------------------------
 
 elif page == "Find Co-authors":
-    st.header("Co-authors of co-authors")
+    st.header("Co-author Network Explorer")
 
     author_query = st.text_input("Search for an author")
 
@@ -153,31 +153,46 @@ elif page == "Find Co-authors":
 
             author = selected_author
             st.markdown(f"**Selected author:** {author}")
+            
+            # Degrees selector
+            max_degree = st.slider(
+                "Degrees of separation",
+                min_value=1,
+                max_value=4,
+                value=2,
+                help="1 = direct co-authors only, 2 = co-authors of co-authors, etc."
+            )
 
-            co_df, two_df = coauthors.get_coauthors_and_twohop(G, author)
+            # Get co-authors by degree
+            degree_dfs = coauthors.get_coauthors_by_degree(G, author, max_degree=max_degree)
+            
+            # Display tables in columns (up to 4)
+            if degree_dfs:
+                degree_labels = ["1st degree (direct)", "2nd degree", "3rd degree", "4th degree"]
+                cols = st.columns(min(len(degree_dfs), 4))
+                
+                for i, (col, df) in enumerate(zip(cols, degree_dfs)):
+                    with col:
+                        st.subheader(degree_labels[i])
+                        if df.empty:
+                            st.write(f"No {degree_labels[i].lower()} co-authors found.")
+                        else:
+                            st.caption(f"{len(df)} authors")
+                            st.dataframe(df, use_container_width=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Direct co-authors")
-                if co_df.empty:
-                    st.write("No direct co-authors found.")
-                else:
-                    st.dataframe(co_df, use_container_width=True)
-
-            with col2:
-                st.subheader("Co-authors of co-authors")
-                if two_df.empty:
-                    st.write("No 2nd-degree co-authors found.")
-                else:
-                    st.dataframe(two_df, use_container_width=True)
-
-            T = coauthors.build_hierarchical_tree(G, author)
-            if T.number_of_nodes() == 0:
+            # Network visualization
+            H = coauthors.build_coauthor_network(G, author, max_degree=max_degree)
+            if H.number_of_nodes() == 0:
                 st.info("No co-author network to display for this author.")
             else:
-                pos = coauthors.hierarchical_positions(T)
-                fig = coauthors.plot_hierarchical_tree(T, pos, author)
+                fig = coauthors.plot_coauthor_network(H, author)
                 st.subheader("Co-author network")
+                
+                # Color legend
+                color_labels = ["Selected author (red)", "1st degree (green)", "2nd degree (blue)", "3rd degree (orange)", "4th degree (purple)"]
+                legend_text = " · ".join(color_labels[:max_degree + 1])
+                st.caption(f"{legend_text} · {H.number_of_nodes()} authors, {H.number_of_edges()} connections")
+                
                 st.plotly_chart(fig, use_container_width=True)
 
 
