@@ -219,11 +219,13 @@ def plot_coauthor_network(H, author):
         
         # Size: larger for central author, smaller for outer degrees
         if lvl == 0:
-            node_sizes.append(20)
+            node_sizes.append(30)
         elif lvl == 1:
-            node_sizes.append(15)
+            node_sizes.append(22)
+        elif lvl == 2:
+            node_sizes.append(16)
         else:
-            node_sizes.append(10)
+            node_sizes.append(12)
         
         node_text.append(f"{n}<br>Degree: {lvl}")
 
@@ -232,7 +234,7 @@ def plot_coauthor_network(H, author):
         mode="markers+text",
         text=[n for n in H.nodes()],
         textposition="top center",
-        textfont=dict(size=9, color="black"),
+        textfont=dict(size=11, color="black"),
         hoverinfo="text",
         hovertext=node_text,
         marker=dict(
