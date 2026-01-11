@@ -188,6 +188,7 @@ with tab1:
                 else:
                     # Fix index to start at 1
                     sim_tbl.index = range(1, len(sim_tbl) + 1)
+                    st.caption("💡 Double-click a cell to read full text. Scroll right to see Authors and Thread.")
                     st.dataframe(sim_tbl, use_container_width=True)
 
 
