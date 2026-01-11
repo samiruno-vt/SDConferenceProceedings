@@ -146,6 +146,7 @@ def build_coauthor_network(G, author, max_degree=2):
     """
     Build a network of co-authors up to max_degree levels.
     Returns a graph with 'level' attribute on each node.
+    Includes ALL edges between authors in the subgraph, not just BFS edges.
     """
     if author not in G:
         return nx.Graph()
@@ -156,6 +157,7 @@ def build_coauthor_network(G, author, max_degree=2):
     visited = {author}
     current_level_nodes = {author}
     
+    # First, collect all nodes up to max_degree using BFS
     for degree in range(1, max_degree + 1):
         next_level_nodes = set()
         
@@ -164,17 +166,18 @@ def build_coauthor_network(G, author, max_degree=2):
                 if nbr not in visited:
                     next_level_nodes.add(nbr)
                     H.add_node(nbr, level=degree)
-                    H.add_edge(node, nbr)
-                elif nbr in H:
-                    # Add edge even if already visited (to show all connections)
-                    if not H.has_edge(node, nbr):
-                        H.add_edge(node, nbr)
         
         visited.update(next_level_nodes)
         current_level_nodes = next_level_nodes
         
         if not next_level_nodes:
             break
+    
+    # Now add ALL edges from G between nodes in H
+    for node in H.nodes():
+        for nbr in G.neighbors(node):
+            if nbr in H and not H.has_edge(node, nbr):
+                H.add_edge(node, nbr)
     
     return H
 
