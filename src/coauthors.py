@@ -9,12 +9,14 @@ from rapidfuzz import process, fuzz
 
 _whitespace_re = re.compile(r"\s+")
 _punct_re = re.compile(r"[.\u00B7•]")
+_quotes_re = re.compile(r"[\"'""''`]")
 
 def normalize_author_name(name: str) -> str:
     if name is None:
         return ""
     name = name.strip()
     name = _punct_re.sub("", name)
+    name = _quotes_re.sub("", name)  # Remove all types of quotes
     name = _whitespace_re.sub(" ", name)
     return name.title()
 
