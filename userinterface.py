@@ -89,8 +89,8 @@ st.title("International System Dynamics Conference Proceedings")
 st.sidebar.title("International System Dynamics Conference Proceedings")
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Dataset Overview**")
-st.sidebar.write(f"Papers: {len(df):,}")
 st.sidebar.write(f"Years: {int(df['Year'].min())}–{int(df['Year'].max())}")
+st.sidebar.write(f"Papers: {len(df):,}")
 st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 
 # -------------------
@@ -108,15 +108,30 @@ with tab1:
     st.header("Find Similar Papers")
 
     st.markdown(
-        "Search by **title**, **author name**, or **abstract**, then pick a paper to see similar ones "
-        "based on titles and abstracts."
+        "Search for a paper, then select it to see similar ones based on titles and abstracts."
     )
 
-    query = st.text_input("Search for a paper (title, author, or abstract)")
+    # Search field selection
+    search_field = st.radio(
+        "Search in:",
+        options=["All fields", "Title", "Authors", "Abstract"],
+        horizontal=True
+    )
+    
+    # Map selection to search_in parameter
+    search_in_map = {
+        "All fields": ("Title", "Authors", "Abstract"),
+        "Title": ("Title",),
+        "Authors": ("Authors",),
+        "Abstract": ("Abstract",)
+    }
+    search_in = search_in_map[search_field]
+
+    query = st.text_input(f"Search for a paper")
 
     if query:
         # search_papers should return a DataFrame with columns: row_idx, Title, Year, Authors
-        candidates = papers.search_papers(query, df, search_in=("Title", "Authors", "Abstract"), limit=20)
+        candidates = papers.search_papers(query, df, search_in=search_in, limit=20)
 
         if candidates.empty:
             st.info("No papers found for that search.")
@@ -374,7 +389,7 @@ with tab3:
     
     # --- Author table section ---
     st.subheader("Top Authors")
-    st.caption(f"**{len(tbl)}** authors match the current filters (from **{len(df_filtered)}** papers)")
+    st.caption(f"**{len(tbl):,}** authors match the current filters (from **{len(df_filtered):,}** papers in selected year/thread range)")
     top_n = st.slider("Number of authors to show", 10, 200, 50)
 
     tbl_show = (
@@ -401,7 +416,7 @@ with tab3:
 
     st.subheader("Network (Top authors only)")
 
-    max_nodes = st.slider("Max nodes to display", 50, 400, 150)
+    max_nodes = st.slider("Max nodes to display", 50, 400, 100)
     size_mode = st.radio("Node size based on", ["Total Papers", "Co-authors"], horizontal=True)
 
     # pick top authors to display (from already-filtered tbl)
@@ -457,11 +472,11 @@ with tab3:
         hoverinfo="none"
     )
 
-    # node sizes
+    # node sizes - bigger nodes
     def node_size(n):
         val = H.nodes[n].get("num_papers" if size_mode == "Total Papers" else "num_coauthors", 0)
         # sqrt scaling so big nodes don't dominate
-        return 6 + (val ** 0.5) * 2.5
+        return 10 + (val ** 0.5) * 4
 
     node_x, node_y, node_text, node_sizes = [], [], [], []
     for n in H.nodes():
