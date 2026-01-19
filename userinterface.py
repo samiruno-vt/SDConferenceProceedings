@@ -56,7 +56,7 @@ st.set_page_config(page_title="SD Conference Proceedings", layout="wide")
 # Custom CSS for tab styling
 st.markdown("""
     <style>
-    /* Make tabs more prominent */
+    
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: #f0f2f6;
@@ -97,7 +97,7 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 # Tab navigation
 # -------------------
 
-tab1, tab2, tab3 = st.tabs(["Find Similar Papers", "Find Co-authors", "Network Overview"])
+tab1, tab2, tab3 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers"])
 
 
 # -----------------------
