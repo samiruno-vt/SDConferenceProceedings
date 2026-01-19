@@ -100,170 +100,11 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 tab1, tab2, tab3 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers"])
 
 
-# -----------------------
-# Page 1: Similar papers
-# -----------------------
+# ---------------------------
+# Page 1: Network Overview
+# ---------------------------
 
 with tab1:
-    st.header("Find Similar Papers")
-
-    st.markdown(
-        "Search for a paper, then select it to see similar ones based on titles and abstracts."
-    )
-
-    # Search field selection
-    search_field = st.radio(
-        "Search in:",
-        options=["All fields", "Title", "Authors", "Abstract"],
-        horizontal=True
-    )
-    
-    # Map selection to search_in parameter
-    search_in_map = {
-        "All fields": ("Title", "Authors", "Abstract"),
-        "Title": ("Title",),
-        "Authors": ("Authors",),
-        "Abstract": ("Abstract",)
-    }
-    search_in = search_in_map[search_field]
-
-    query = st.text_input(f"Search for a paper")
-
-    if query:
-        # search_papers should return a DataFrame with columns: row_idx, Title, Year, Authors
-        candidates = papers.search_papers(query, df, search_in=search_in, limit=20)
-
-        if candidates.empty:
-            st.info("No papers found for that search.")
-        else:
-            st.subheader("Matching papers")
-            st.caption("Click on a row to select a paper")
-            
-            # Prepare display dataframe
-            display_df = candidates[["Title", "Year", "Authors"]].copy()
-            display_df.index = range(1, len(display_df) + 1)  # Start numbering at 1
-            
-            # Clickable dataframe for selection
-            selection = st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=False,
-                on_select="rerun",
-                selection_mode="single-row",
-            )
-            
-            # Get selected row
-            selected_rows = selection.selection.rows if selection.selection else []
-            
-            if selected_rows:
-                selected_idx = selected_rows[0]  # Get first (only) selected row
-                
-                # Get the underlying row index into df
-                paper_row_idx = int(candidates.iloc[selected_idx]["row_idx"])
-
-                # Show selected paper details
-                selected_paper = df.loc[paper_row_idx]
-                st.markdown("---")
-                st.markdown("**Selected paper**")
-                st.markdown(f"**Title:** {selected_paper['Title']}")
-                st.markdown(f"**Year:** {selected_paper['Year']}")
-                st.markdown(f"**Thread:** {selected_paper.get('Category', 'N/A')}")
-                st.markdown(f"**Authors:** {selected_paper['Authors']}")
-                if "Abstract" in df.columns:
-                    st.markdown("**Abstract:**")
-                    st.write(selected_paper["Abstract"])
-
-                # Get similar papers
-                k = st.radio("Number of similar papers to show", [5, 10, 15, 20], index=1, horizontal=True)
-                sim_tbl = papers.get_similar_papers(
-                    paper_idx=paper_row_idx,
-                    embeddings=embeddings,
-                    df=df,
-                    k=k
-                )
-
-                st.subheader("Similar papers")
-                if sim_tbl.empty:
-                    st.info("No similar papers found.")
-                else:
-                    # Fix index to start at 1
-                    sim_tbl.index = range(1, len(sim_tbl) + 1)
-                    st.caption("💡 Double-click a cell to read full text. Scroll right to see Authors and Thread.")
-                    st.dataframe(sim_tbl, use_container_width=True)
-
-
-# ---------------------------
-# Page 2: Co-author explorer
-# ---------------------------
-
-with tab2:
-    st.header("Co-author Network Explorer")
-
-    author_query = st.text_input("Search for an author")
-
-    if author_query:
-        all_authors = sorted(G.nodes())
-        candidates = coauthors.search_authors(author_query, all_authors, limit=10, score_cutoff=60)
-
-        if not candidates:
-            st.info("No matching authors found.")
-        else:
-            author_names = [name for name, score in candidates]
-            selected_author = st.radio("Select an author:", options=author_names)
-
-            author = selected_author
-            st.markdown(f"**Selected author:** {author}")
-            
-            # Degrees selector - horizontal radio buttons
-            max_degree = st.radio(
-                "Degrees of separation",
-                options=[1, 2, 3, 4],
-                index=1,  # Default to 2
-                horizontal=True,
-                help="1 = direct co-authors only, 2 = co-authors of co-authors, etc."
-            )
-
-            # Get co-authors by degree
-            degree_dfs = coauthors.get_coauthors_by_degree(G, author, max_degree=max_degree)
-            
-            # Display tables in columns (up to 4)
-            if degree_dfs:
-                degree_labels = ["1st degree (direct)", "2nd degree", "3rd degree", "4th degree"]
-                cols = st.columns(min(len(degree_dfs), 4))
-                
-                for i, (col, degree_df) in enumerate(zip(cols, degree_dfs)):
-                    with col:
-                        st.subheader(degree_labels[i])
-                        if degree_df.empty:
-                            st.write(f"No {degree_labels[i].lower()} co-authors found.")
-                        else:
-                            st.caption(f"{len(degree_df)} authors")
-                            # Fix index to start at 1
-                            degree_df_display = degree_df.copy()
-                            degree_df_display.index = range(1, len(degree_df_display) + 1)
-                            st.dataframe(degree_df_display, use_container_width=True)
-
-            # Network visualization
-            H = coauthors.build_coauthor_network(G, author, max_degree=max_degree)
-            if H.number_of_nodes() == 0:
-                st.info("No co-author network to display for this author.")
-            else:
-                fig = coauthors.plot_coauthor_network(H, author)
-                st.subheader("Co-author network")
-                
-                # Color legend
-                color_labels = ["Selected author (red)", "1st degree (green)", "2nd degree (blue)", "3rd degree (orange)", "4th degree (purple)"]
-                legend_text = " · ".join(color_labels[:max_degree + 1])
-                st.caption(f"{legend_text} · {H.number_of_nodes()} authors, {H.number_of_edges()} connections")
-                
-                st.plotly_chart(fig, use_container_width=True)
-
-
-# ---------------------------
-# Page 3: Network Overview
-# ---------------------------
-
-with tab3:
     st.header("Network Overview")
 
     # --- Filters section ---
@@ -521,5 +362,166 @@ with tab3:
 
     st.plotly_chart(fig, use_container_width=True)
     st.caption(f"Showing {H.number_of_nodes()} authors and {H.number_of_edges()} coauthorship links.")
+
+
+
+# ---------------------------
+# Page 2: Co-author explorer
+# ---------------------------
+
+with tab2:
+    st.header("Co-author Network Explorer")
+
+    author_query = st.text_input("Search for an author")
+
+    if author_query:
+        all_authors = sorted(G.nodes())
+        candidates = coauthors.search_authors(author_query, all_authors, limit=10, score_cutoff=60)
+
+        if not candidates:
+            st.info("No matching authors found.")
+        else:
+            author_names = [name for name, score in candidates]
+            selected_author = st.radio("Select an author:", options=author_names)
+
+            author = selected_author
+            st.markdown(f"**Selected author:** {author}")
+            
+            # Degrees selector - horizontal radio buttons
+            max_degree = st.radio(
+                "Degrees of separation",
+                options=[1, 2, 3, 4],
+                index=1,  # Default to 2
+                horizontal=True,
+                help="1 = direct co-authors only, 2 = co-authors of co-authors, etc."
+            )
+
+            # Get co-authors by degree
+            degree_dfs = coauthors.get_coauthors_by_degree(G, author, max_degree=max_degree)
+            
+            # Display tables in columns (up to 4)
+            if degree_dfs:
+                degree_labels = ["1st degree (direct)", "2nd degree", "3rd degree", "4th degree"]
+                cols = st.columns(min(len(degree_dfs), 4))
+                
+                for i, (col, degree_df) in enumerate(zip(cols, degree_dfs)):
+                    with col:
+                        st.subheader(degree_labels[i])
+                        if degree_df.empty:
+                            st.write(f"No {degree_labels[i].lower()} co-authors found.")
+                        else:
+                            st.caption(f"{len(degree_df)} authors")
+                            # Fix index to start at 1
+                            degree_df_display = degree_df.copy()
+                            degree_df_display.index = range(1, len(degree_df_display) + 1)
+                            st.dataframe(degree_df_display, use_container_width=True)
+
+            # Network visualization
+            H = coauthors.build_coauthor_network(G, author, max_degree=max_degree)
+            if H.number_of_nodes() == 0:
+                st.info("No co-author network to display for this author.")
+            else:
+                fig = coauthors.plot_coauthor_network(H, author)
+                st.subheader("Co-author network")
+                
+                # Color legend
+                color_labels = ["Selected author (red)", "1st degree (green)", "2nd degree (blue)", "3rd degree (orange)", "4th degree (purple)"]
+                legend_text = " · ".join(color_labels[:max_degree + 1])
+                st.caption(f"{legend_text} · {H.number_of_nodes()} authors, {H.number_of_edges()} connections")
+                
+                st.plotly_chart(fig, use_container_width=True)
+
+
+
+# -----------------------
+# Page 3: Similar papers
+# -----------------------
+
+with tab3:
+    st.header("Find Similar Papers")
+
+    st.markdown(
+        "Search for a paper, then select it to see similar ones based on titles and abstracts."
+    )
+
+    # Search field selection
+    search_field = st.radio(
+        "Search in:",
+        options=["All fields", "Title", "Authors", "Abstract"],
+        horizontal=True
+    )
+    
+    # Map selection to search_in parameter
+    search_in_map = {
+        "All fields": ("Title", "Authors", "Abstract"),
+        "Title": ("Title",),
+        "Authors": ("Authors",),
+        "Abstract": ("Abstract",)
+    }
+    search_in = search_in_map[search_field]
+
+    query = st.text_input(f"Search for a paper")
+
+    if query:
+        # search_papers should return a DataFrame with columns: row_idx, Title, Year, Authors
+        candidates = papers.search_papers(query, df, search_in=search_in, limit=20)
+
+        if candidates.empty:
+            st.info("No papers found for that search.")
+        else:
+            st.subheader("Matching papers")
+            st.caption("Click on a row to select a paper")
+            
+            # Prepare display dataframe
+            display_df = candidates[["Title", "Year", "Authors"]].copy()
+            display_df.index = range(1, len(display_df) + 1)  # Start numbering at 1
+            
+            # Clickable dataframe for selection
+            selection = st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=False,
+                on_select="rerun",
+                selection_mode="single-row",
+            )
+            
+            # Get selected row
+            selected_rows = selection.selection.rows if selection.selection else []
+            
+            if selected_rows:
+                selected_idx = selected_rows[0]  # Get first (only) selected row
+                
+                # Get the underlying row index into df
+                paper_row_idx = int(candidates.iloc[selected_idx]["row_idx"])
+
+                # Show selected paper details
+                selected_paper = df.loc[paper_row_idx]
+                st.markdown("---")
+                st.markdown("**Selected paper**")
+                st.markdown(f"**Title:** {selected_paper['Title']}")
+                st.markdown(f"**Year:** {selected_paper['Year']}")
+                st.markdown(f"**Thread:** {selected_paper.get('Category', 'N/A')}")
+                st.markdown(f"**Authors:** {selected_paper['Authors']}")
+                if "Abstract" in df.columns:
+                    st.markdown("**Abstract:**")
+                    st.write(selected_paper["Abstract"])
+
+                # Get similar papers
+                k = st.radio("Number of similar papers to show", [5, 10, 15, 20], index=1, horizontal=True)
+                sim_tbl = papers.get_similar_papers(
+                    paper_idx=paper_row_idx,
+                    embeddings=embeddings,
+                    df=df,
+                    k=k
+                )
+
+                st.subheader("Similar papers")
+                if sim_tbl.empty:
+                    st.info("No similar papers found.")
+                else:
+                    # Fix index to start at 1
+                    sim_tbl.index = range(1, len(sim_tbl) + 1)
+                    st.caption("💡 Double-click a cell to read full text. Scroll right to see Authors and Thread.")
+                    st.dataframe(sim_tbl, use_container_width=True)
 
 
