@@ -364,7 +364,11 @@ with tab1:
           .reset_index()
     )
 
-    tbl = author_stats.merge(
+    # Normalize author_stats Author names to match parsed names
+    author_stats_normalized = author_stats.copy()
+    author_stats_normalized["Author"] = author_stats_normalized["Author"].apply(coauthors.normalize_author_name)
+    
+    tbl = author_stats_normalized.merge(
         author_counts,
         on="Author",
         how="left"
@@ -427,6 +431,8 @@ with tab1:
            .tolist()
     )
 
+    # Create mapping from normalized names to original graph node names
+    normalized_to_original = {coauthors.normalize_author_name(n): n for n in G.nodes()}
 
     # Build filtered coauthor edges (using df_filtered which has year + thread filters applied)
     edges_filtered = set()
@@ -440,15 +446,19 @@ with tab1:
 
     H = nx.Graph()
 
-    # add nodes first
+    # add nodes first (using normalized names, but getting attributes from original graph)
     for a in top_authors:
-        if a in G:
-            H.add_node(a, **G.nodes[a])
+        original_name = normalized_to_original.get(a)
+        if original_name and original_name in G:
+            H.add_node(a, **G.nodes[original_name])
 
     # add only year-valid edges
     for a, b in edges_filtered:
         if a in H and b in H:
-            if G.has_edge(a, b):
+            # Check if edge exists in original graph (using original names)
+            orig_a = normalized_to_original.get(a)
+            orig_b = normalized_to_original.get(b)
+            if orig_a and orig_b and G.has_edge(orig_a, orig_b):
                 H.add_edge(a, b)
 
 
