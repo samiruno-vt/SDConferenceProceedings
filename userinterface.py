@@ -97,14 +97,14 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 # Tab navigation
 # -------------------
 
-tab1, tab2, tab3 = st.tabs(["Find Similar Papers", "Find Co-authors", "Network Overview"])
+tab1, tab2, tab3 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers"])
 
 
 # -----------------------
-# Page 1: Similar papers
+# Tab 3: Similar papers
 # -----------------------
 
-with tab1:
+with tab3:
     st.header("Find Similar Papers")
 
     st.markdown(
@@ -193,7 +193,7 @@ with tab1:
 
 
 # ---------------------------
-# Page 2: Co-author explorer
+# Tab 2: Co-author explorer
 # ---------------------------
 
 with tab2:
@@ -260,10 +260,10 @@ with tab2:
 
 
 # ---------------------------
-# Page 3: Network Overview
+# Tab 1: Network Overview
 # ---------------------------
 
-with tab3:
+with tab1:
     st.header("Network Overview")
 
     # --- Filters section ---
