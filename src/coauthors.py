@@ -31,18 +31,44 @@ def parse_authors(authors_str: str):
 # Search authors (for UI)
 # ------------------------
 
-def search_authors(query, all_authors, limit=10, score_cutoff=60):
+def search_authors(query, all_authors, limit=10, score_cutoff=80):
+    """
+    Search for authors matching the query.
+    Prioritizes exact substring matches, then falls back to fuzzy matching.
+    """
     q = normalize_author_name(query)
     if not q:
         return []
-
-    results = process.extract(
+    
+    q_lower = q.lower()
+    
+    # First, find exact substring matches (case-insensitive)
+    exact_matches = []
+    for name in all_authors:
+        if q_lower in name.lower():
+            # Score based on how much of the name the query covers
+            score = len(q) / len(name) * 100
+            exact_matches.append((name, min(100, score + 50)))  # Boost exact matches
+    
+    # Sort by score descending, then alphabetically
+    exact_matches.sort(key=lambda x: (-x[1], x[0]))
+    
+    # If we have enough exact matches, return those only
+    if len(exact_matches) >= limit:
+        return exact_matches[:limit]
+    
+    # If we have some exact matches, just return those (don't add fuzzy noise)
+    if len(exact_matches) > 0:
+        return exact_matches[:limit]
+    
+    # No exact matches - fall back to fuzzy matching
+    fuzzy_results = process.extract(
         q,
         all_authors,
         scorer=fuzz.WRatio,
         limit=limit
     )
-    return [(name, score) for name, score, _ in results if score >= score_cutoff]
+    return [(name, score) for name, score, _ in fuzzy_results if score >= score_cutoff]
 
 # ------------------------
 # Co-author tables
