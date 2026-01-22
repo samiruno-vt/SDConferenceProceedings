@@ -83,10 +83,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Main title
-st.title("International System Dynamics Conference Proceedings")
+st.title("International System Dynamics Conference Proceedings (Demo)")
 
 # Sidebar title and stats
 st.sidebar.title("International System Dynamics Conference Proceedings")
+st.sidebar.markdown("*Demo Version*")
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Dataset Overview**")
 st.sidebar.write(f"Years: {int(df['Year'].min())}–{int(df['Year'].max())}")
@@ -307,12 +308,6 @@ with tab1:
         default=[],
         help="Filter to authors who have papers in these threads. Leave empty to include all papers."
     )
-    
-    include_no_thread = st.checkbox(
-        "Include papers without a thread",
-        value=True,
-        help="Include papers that don't have a thread assigned"
-    )
 
     # Country and Organization filters
     col_country, col_org = st.columns(2)
@@ -340,15 +335,7 @@ with tab1:
     
     # Apply thread filter if any threads are selected
     if selected_threads:
-        if include_no_thread:
-            df_filtered = df_filtered[
-                df_filtered["Category"].isin(selected_threads) | df_filtered["Category"].isna()
-            ]
-        else:
-            df_filtered = df_filtered[df_filtered["Category"].isin(selected_threads)]
-    elif not include_no_thread:
-        # No threads selected but excluding papers without thread
-        df_filtered = df_filtered[df_filtered["Category"].notna()]
+        df_filtered = df_filtered[df_filtered["Category"].isin(selected_threads)]
 
     # explode authors only for filtering
     ap = df_filtered[["Authors"]].copy()
