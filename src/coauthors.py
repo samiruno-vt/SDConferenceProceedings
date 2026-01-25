@@ -201,89 +201,159 @@ def build_coauthor_network(G, author, max_degree=2):
         if not next_level_nodes:
             break
     
-    # Now add ALL edges from G between nodes in H
+    # Now add ALL edges from G between nodes in H, copying edge weights
     for node in H.nodes():
         for nbr in G.neighbors(node):
             if nbr in H and not H.has_edge(node, nbr):
-                H.add_edge(node, nbr)
+                # Copy edge weight (number of shared papers) from original graph
+                weight = G[node][nbr].get("weight", 1)
+                H.add_edge(node, nbr, weight=weight)
     
     return H
 
 
 def plot_coauthor_network(H, author):
     """
-    Plot the co-author network with force-directed layout.
-    Nodes are colored by degree level.
+    Plot the co-author network with improved layout and visual encoding.
+    
+    Improvements:
+    - Kamada-Kawai layout for better node separation (prevents central overlap)
+    - Edge thickness indicates collaboration strength (shared papers)
+    - Improved node sizing with better differentiation
+    - More intuitive color scheme
     """
     if H.number_of_nodes() == 0:
         return None
     
-    # Force-directed layout
-    pos = nx.spring_layout(H, seed=42, k=1.5/np.sqrt(H.number_of_nodes()) if H.number_of_nodes() > 1 else 1)
+    # Choose layout based on network size
+    n_nodes = H.number_of_nodes()
     
-    # Draw edges
-    edge_x, edge_y = [], []
+    if n_nodes <= 50:
+        # Kamada-Kawai works well for smaller networks - good separation
+        try:
+            pos = nx.kamada_kawai_layout(H, scale=2)
+        except:
+            pos = nx.spring_layout(H, seed=42, k=3/np.sqrt(n_nodes), iterations=100)
+    else:
+        # For larger networks, use tuned spring layout
+        # Higher k = more spacing, more iterations = better convergence
+        pos = nx.spring_layout(
+            H, 
+            seed=42, 
+            k=2.5/np.sqrt(n_nodes),  # Increased spacing
+            iterations=150,  # More iterations for better layout
+            scale=2
+        )
+    
+    # Get edge weights for thickness scaling
+    edge_weights = [H[u][v].get("weight", 1) for u, v in H.edges()]
+    max_weight = max(edge_weights) if edge_weights else 1
+    min_weight = min(edge_weights) if edge_weights else 1
+    
+    # Create separate edge traces for different weights (Plotly limitation)
+    edge_traces = []
+    
     for u, v in H.edges():
         x0, y0 = pos[u]
         x1, y1 = pos[v]
-        edge_x += [x0, x1, None]
-        edge_y += [y0, y1, None]
+        weight = H[u][v].get("weight", 1)
+        
+        # Scale edge width: 0.5 to 4 pixels based on weight
+        if max_weight > min_weight:
+            normalized_weight = (weight - min_weight) / (max_weight - min_weight)
+        else:
+            normalized_weight = 0.5
+        edge_width = 0.5 + normalized_weight * 3.5
+        
+        # Color intensity also varies with weight
+        alpha = 0.3 + normalized_weight * 0.5
+        edge_color = f"rgba(150, 150, 150, {alpha})"
+        
+        edge_traces.append(go.Scatter(
+            x=[x0, x1, None],
+            y=[y0, y1, None],
+            mode="lines",
+            line=dict(width=edge_width, color=edge_color),
+            hoverinfo="text",
+            hovertext=f"{u} — {v}<br>Shared papers: {weight}",
+            showlegend=False
+        ))
 
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        mode="lines",
-        line=dict(width=0.8, color="#cccccc"),
-        hoverinfo="none"
-    )
+    # Improved color scheme - more intuitive and accessible
+    # Central = bold red, then gradient outward: teal → blue → purple → gray
+    level_colors = {
+        0: "#E31A1C",  # Bold red for selected author
+        1: "#1F9E89",  # Teal for direct co-authors
+        2: "#3182BD",  # Blue for 2nd degree
+        3: "#9467BD",  # Purple for 3rd degree
+        4: "#7B7B7B",  # Gray for 4th degree
+    }
 
-    # Colors for different levels
-    level_colors = {0: "red", 1: "green", 2: "blue", 3: "orange", 4: "purple"}
-
+    # Calculate node sizes based on degree (number of connections in subgraph)
+    node_degrees = dict(H.degree())
+    max_degree = max(node_degrees.values()) if node_degrees else 1
+    
     node_x, node_y, node_text, node_colors, node_sizes = [], [], [], [], []
+    node_names = []
+    
     for n in H.nodes():
         x, y = pos[n]
         node_x.append(x)
         node_y.append(y)
+        node_names.append(n)
         
         lvl = H.nodes[n].get("level", 0)
-        node_colors.append(level_colors.get(lvl, "gray"))
+        node_colors.append(level_colors.get(lvl, "#7B7B7B"))
         
-        # Size: larger for central author, smaller for outer degrees
-        if lvl == 0:
-            node_sizes.append(30)
-        elif lvl == 1:
-            node_sizes.append(22)
-        elif lvl == 2:
-            node_sizes.append(16)
+        # Size based on: base size for level + bonus for connectivity
+        # This creates more differentiation between highly-connected and peripheral nodes
+        deg = node_degrees.get(n, 1)
+        
+        # Base sizes by level (central author largest)
+        base_sizes = {0: 45, 1: 28, 2: 20, 3: 16, 4: 14}
+        base = base_sizes.get(lvl, 14)
+        
+        # Add size bonus based on degree (logarithmic scaling for better spread)
+        # This helps differentiate prolific collaborators
+        if max_degree > 1:
+            degree_bonus = np.log1p(deg) / np.log1p(max_degree) * 15
         else:
-            node_sizes.append(12)
+            degree_bonus = 0
         
-        node_text.append(f"{n}<br>Degree: {lvl}")
+        node_sizes.append(base + degree_bonus)
+        
+        # Hover text with more info
+        node_text.append(f"<b>{n}</b><br>Degree level: {lvl}<br>Connections shown: {deg}")
 
     node_trace = go.Scatter(
         x=node_x, y=node_y,
         mode="markers+text",
-        text=[n for n in H.nodes()],
+        text=node_names,
         textposition="top center",
-        textfont=dict(size=11, color="black"),
+        textfont=dict(size=10, color="#333333"),
         hoverinfo="text",
         hovertext=node_text,
         marker=dict(
             size=node_sizes,
             color=node_colors,
-            line=dict(width=1, color="white")
-        )
+            line=dict(width=1.5, color="white"),
+            opacity=0.9
+        ),
+        showlegend=False
     )
 
-    fig = go.Figure(data=[edge_trace, node_trace])
+    # Combine all traces: edges first (behind), then nodes
+    fig = go.Figure(data=edge_traces + [node_trace])
     
     fig.update_layout(
         showlegend=False,
-        plot_bgcolor="white",
+        plot_bgcolor="#FAFAFA",  # Slight off-white for less harsh contrast
         margin=dict(l=20, r=20, t=20, b=20),
         height=700,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, scaleanchor="y"),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        # Keep aspect ratio square-ish for better layout appearance
+        dragmode="pan",
     )
     
     return fig
