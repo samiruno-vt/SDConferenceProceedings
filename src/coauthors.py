@@ -331,12 +331,21 @@ def plot_coauthor_network(H, author):
         connections = deg
         node_text.append(f"<b>{n}</b><br>Degree from center: {lvl}<br>Connections shown: {connections}")
 
+    # For large networks, hide text labels to prevent crowding and use full space
+    # Only show labels for smaller networks where they're readable
+    if n_nodes <= 30:
+        node_mode = "markers+text"
+        node_textposition = "top center"
+    else:
+        node_mode = "markers"
+        node_textposition = None
+
     node_trace = go.Scatter(
         x=node_x, y=node_y,
-        mode="markers+text",
-        text=node_names,
-        textposition="top center",
-        textfont=dict(size=9, color="#333333"),
+        mode=node_mode,
+        text=node_names if n_nodes <= 30 else None,
+        textposition=node_textposition,
+        textfont=dict(size=9, color="#333333") if n_nodes <= 30 else None,
         hoverinfo="text",
         hovertext=node_text,
         marker=dict(
@@ -355,10 +364,21 @@ def plot_coauthor_network(H, author):
     fig.update_layout(
         showlegend=False,
         plot_bgcolor="#f8f9fa",
-        margin=dict(l=20, r=20, t=20, b=20),
+        margin=dict(l=5, r=5, t=5, b=5),  # Minimal margins
         height=700,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        autosize=True,
+        xaxis=dict(
+            showgrid=False, 
+            zeroline=False, 
+            showticklabels=False,
+            constrain="domain"  # Keep within the plot area
+        ),
+        yaxis=dict(
+            showgrid=False, 
+            zeroline=False, 
+            showticklabels=False,
+            constrain="domain"
+        ),
         dragmode="pan",
         hovermode="closest"
     )
