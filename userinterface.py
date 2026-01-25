@@ -252,10 +252,10 @@ with tab2:
                 fig = coauthors.plot_coauthor_network(H, author)
                 st.subheader("Co-author network")
                 
-                # Color legend
-                color_labels = ["Selected author (red)", "1st degree (green)", "2nd degree (blue)", "3rd degree (orange)", "4th degree (purple)"]
+                # Color legend (matching new color scheme)
+                color_labels = ["Selected author (red)", "1st degree (teal)", "2nd degree (blue)", "3rd degree (purple)", "4th degree (gray)"]
                 legend_text = " · ".join(color_labels[:max_degree + 1])
-                st.caption(f"{legend_text} · {H.number_of_nodes()} authors, {H.number_of_edges()} connections")
+                st.caption(f"{legend_text} · {H.number_of_nodes()} authors, {H.number_of_edges()} connections · Edge thickness = shared papers")
                 
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -439,84 +439,146 @@ with tab1:
         if original_name and original_name in G:
             H.add_node(a, **G.nodes[original_name])
 
-    # add only year-valid edges
+    # add only year-valid edges with weights from original graph
     for a, b in edges_filtered:
         if a in H and b in H:
             # Check if edge exists in original graph (using original names)
             orig_a = normalized_to_original.get(a)
             orig_b = normalized_to_original.get(b)
             if orig_a and orig_b and G.has_edge(orig_a, orig_b):
-                H.add_edge(a, b)
+                # Copy edge weight (shared papers) from original graph
+                weight = G[orig_a][orig_b].get("weight", 1)
+                H.add_edge(a, b, weight=weight)
 
 
     if H.number_of_nodes() == 0:
         st.info("No nodes to display.")
     else:
-        # layout (force-directed)
-        pos = nx.spring_layout(H, seed=42, k=None)
+        # Improved layout: Kamada-Kawai for smaller networks, tuned spring for larger
+        n_nodes = H.number_of_nodes()
+        
+        if n_nodes <= 80:
+            try:
+                pos = nx.kamada_kawai_layout(H, scale=2)
+            except:
+                pos = nx.spring_layout(H, seed=42, k=2.5/np.sqrt(n_nodes), iterations=150, scale=2)
+        else:
+            # For larger networks, use tuned spring layout with more repulsion
+            pos = nx.spring_layout(
+                H, 
+                seed=42, 
+                k=2.0/np.sqrt(n_nodes),  # Increased spacing factor
+                iterations=200,  # More iterations for better convergence
+                scale=2
+            )
+        
+        # Get edge weights for thickness scaling
+        edge_weights = [H[u][v].get("weight", 1) for u, v in H.edges()]
+        max_weight = max(edge_weights) if edge_weights else 1
+        min_weight = min(edge_weights) if edge_weights else 1
+        
+        # Create edge traces with variable thickness based on collaboration strength
+        edge_traces = []
+        
+        for u, v in H.edges():
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
+            weight = H[u][v].get("weight", 1)
+            
+            # Scale edge width: 0.3 to 4 pixels based on weight
+            if max_weight > min_weight:
+                normalized_weight = (weight - min_weight) / (max_weight - min_weight)
+            else:
+                normalized_weight = 0.5
+            edge_width = 0.3 + normalized_weight * 3.7
+            
+            # Color intensity varies with weight
+            alpha = 0.25 + normalized_weight * 0.5
+            edge_color = f"rgba(120, 120, 120, {alpha})"
+            
+            edge_traces.append(go.Scatter(
+                x=[x0, x1, None],
+                y=[y0, y1, None],
+                mode="lines",
+                line=dict(width=edge_width, color=edge_color),
+                hoverinfo="text",
+                hovertext=f"{u} — {v}<br>Shared papers: {weight}",
+                showlegend=False
+            ))
 
-    # edges
-    edge_x, edge_y = [], []
-    for u, v in H.edges():
-        x0, y0 = pos[u]
-        x1, y1 = pos[v]
-        edge_x += [x0, x1, None]
-        edge_y += [y0, y1, None]
+        # Improved node sizing with better differentiation
+        def node_size(n):
+            val = H.nodes[n].get("num_papers" if size_mode == "Total Papers" else "num_coauthors", 0)
+            # Use power scaling (^0.6) for better spread between small and large values
+            # Minimum size of 12, with significant growth for higher values
+            return 12 + (val ** 0.6) * 3.5
 
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        mode="lines",
-        line=dict(width=1, color="#bbbbbb"),
-        hoverinfo="none"
-    )
+        # Get all sizes for color normalization
+        all_sizes_raw = [H.nodes[n].get("num_papers" if size_mode == "Total Papers" else "num_coauthors", 0) for n in H.nodes()]
+        max_val = max(all_sizes_raw) if all_sizes_raw else 1
+        min_val = min(all_sizes_raw) if all_sizes_raw else 0
 
-    # node sizes - bigger nodes
-    def node_size(n):
-        val = H.nodes[n].get("num_papers" if size_mode == "Total Papers" else "num_coauthors", 0)
-        # sqrt scaling so big nodes don't dominate
-        return 10 + (val ** 0.5) * 4
+        node_x, node_y, node_text, node_sizes, node_colors = [], [], [], [], []
+        
+        for n in H.nodes():
+            x, y = pos[n]
+            node_x.append(x)
+            node_y.append(y)
+            node_sizes.append(node_size(n))
 
-    node_x, node_y, node_text, node_sizes = [], [], [], []
-    for n in H.nodes():
-        x, y = pos[n]
-        node_x.append(x)
-        node_y.append(y)
-        node_sizes.append(node_size(n))
+            npapers = H.nodes[n].get("num_papers", 0)
+            nco = H.nodes[n].get("num_coauthors", 0)
+            country = H.nodes[n].get("country")
+            org = H.nodes[n].get("organization")
 
-        npapers = H.nodes[n].get("num_papers", 0)
-        nco = H.nodes[n].get("num_coauthors", 0)
-        country = H.nodes[n].get("country")
-        org = H.nodes[n].get("organization")
+            hover = f"<b>{n}</b><br>Papers: {npapers}<br>Co-authors: {nco}"
+            if country:
+                hover += f"<br>Country: {country}"
+            if org:
+                hover += f"<br>Organization: {org}"
+            node_text.append(hover)
+            
+            # Color gradient based on the metric being sized
+            val = npapers if size_mode == "Total Papers" else nco
+            if max_val > min_val:
+                normalized = (val - min_val) / (max_val - min_val)
+            else:
+                normalized = 0.5
+            node_colors.append(normalized)
 
-        hover = f"{n}<br>Papers: {npapers}<br>Coauthors: {nco}"
-        if country:
-            hover += f"<br>Country: {country}"
-        if org:
-            hover += f"<br>Org: {org}"
-        node_text.append(hover)
-
-    node_trace = go.Scatter(
-        x=node_x, y=node_y,
-        mode="markers",
-        hoverinfo="text",
-        text=node_text,
-        marker=dict(
-            size=node_sizes,
-            color="#1f77b4",
-            line=dict(width=1, color="#333333")
+        node_trace = go.Scatter(
+            x=node_x, y=node_y,
+            mode="markers",
+            hoverinfo="text",
+            text=node_text,
+            marker=dict(
+                size=node_sizes,
+                color=node_colors,
+                colorscale="Viridis",  # Perceptually uniform, colorblind-friendly
+                showscale=True,
+                colorbar=dict(
+                    title=size_mode,
+                    thickness=15,
+                    len=0.5,
+                    y=0.5
+                ),
+                line=dict(width=1, color="white"),
+                opacity=0.85
+            )
         )
-    )
 
-    fig = go.Figure(data=[edge_trace, node_trace])
-    fig.update_layout(
-        showlegend=False,
-        margin=dict(l=10, r=10, t=10, b=10),
-        height=750,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-    )
+        fig = go.Figure(data=edge_traces + [node_trace])
+        fig.update_layout(
+            showlegend=False,
+            plot_bgcolor="#FAFAFA",
+            margin=dict(l=10, r=10, t=10, b=10),
+            height=750,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, scaleanchor="y"),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            dragmode="pan",
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption(f"Showing {H.number_of_nodes()} authors and {H.number_of_edges()} coauthorship links.")
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"Showing {H.number_of_nodes()} authors and {H.number_of_edges()} coauthorship links. Edge thickness indicates collaboration strength (shared papers).")
 
 
