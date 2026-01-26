@@ -174,18 +174,35 @@ with tab3:
                     st.markdown("**Abstract:**")
                     st.write(selected_paper["Abstract"])
 
-                # Get similar papers
-                k = st.radio("Number of similar papers to show", [5, 10, 15, 20], index=1, horizontal=True)
+                # Similar papers controls
+                st.markdown("---")
+                col_k, col_thread = st.columns([1, 2])
+                
+                with col_k:
+                    k = st.radio("Number of results", [5, 10, 15, 20], index=1, horizontal=True)
+                
+                with col_thread:
+                    # Thread filter for similar papers
+                    all_threads_tab3 = sorted([t for t in df["Category"].dropna().unique() if t])
+                    selected_threads_tab3 = st.multiselect(
+                        "Filter by thread (leave empty for all)",
+                        options=all_threads_tab3,
+                        default=[],
+                        key="similar_papers_thread_filter"
+                    )
+                
+                # Get similar papers with optional thread filter
                 sim_tbl = papers.get_similar_papers(
                     paper_idx=paper_row_idx,
                     embeddings=embeddings,
                     df=df,
-                    k=k
+                    k=k,
+                    threads=selected_threads_tab3 if selected_threads_tab3 else None
                 )
 
                 st.subheader("Similar papers")
                 if sim_tbl.empty:
-                    st.info("No similar papers found.")
+                    st.info("No similar papers found matching the filters.")
                 else:
                     # Fix index to start at 1
                     sim_tbl.index = range(1, len(sim_tbl) + 1)
@@ -215,49 +232,102 @@ with tab2:
             author = selected_author
             st.markdown(f"**Selected author:** {author}")
             
-            # Degrees selector - horizontal radio buttons
-            max_degree = st.radio(
-                "Degrees of separation",
-                options=[1, 2, 3, 4],
-                index=1,  # Default to 2
-                horizontal=True,
-                help="1 = direct co-authors only, 2 = co-authors of co-authors, etc."
-            )
-
-            # Get co-authors by degree
-            degree_dfs = coauthors.get_coauthors_by_degree(G, author, max_degree=max_degree)
+            # Controls row: degrees and thread filter
+            col_degrees, col_thread = st.columns([1, 2])
             
-            # Display tables in columns (up to 4)
-            if degree_dfs:
-                degree_labels = ["1st degree (direct)", "2nd degree", "3rd degree", "4th degree"]
-                cols = st.columns(min(len(degree_dfs), 4))
+            with col_degrees:
+                # Degrees selector - horizontal radio buttons
+                max_degree = st.radio(
+                    "Degrees of separation",
+                    options=[1, 2, 3, 4],
+                    index=1,  # Default to 2
+                    horizontal=True,
+                    help="1 = direct co-authors only, 2 = co-authors of co-authors, etc."
+                )
+            
+            with col_thread:
+                # Thread filter for co-authors
+                all_threads_tab2 = sorted([t for t in df["Category"].dropna().unique() if t])
+                selected_threads_tab2 = st.multiselect(
+                    "Filter by thread (leave empty for all)",
+                    options=all_threads_tab2,
+                    default=[],
+                    key="coauthor_thread_filter",
+                    help="Only show co-authors from papers in these threads"
+                )
+            
+            # Build filtered graph if threads are selected
+            if selected_threads_tab2:
+                # Filter papers to selected threads
+                df_thread_filtered = df[df["Category"].isin(selected_threads_tab2)]
                 
-                for i, (col, degree_df) in enumerate(zip(cols, degree_dfs)):
-                    with col:
-                        st.subheader(degree_labels[i])
-                        if degree_df.empty:
-                            st.write(f"No {degree_labels[i].lower()} co-authors found.")
-                        else:
-                            st.caption(f"{len(degree_df)} authors")
-                            # Fix index to start at 1
-                            degree_df_display = degree_df.copy()
-                            degree_df_display.index = range(1, len(degree_df_display) + 1)
-                            st.dataframe(degree_df_display, use_container_width=True)
-
-            # Network visualization
-            H = coauthors.build_coauthor_network(G, author, max_degree=max_degree)
-            if H.number_of_nodes() == 0:
-                st.info("No co-author network to display for this author.")
+                # Build a new graph from only these papers
+                G_filtered = nx.Graph()
+                
+                for _, row in df_thread_filtered.iterrows():
+                    authors_list = coauthors.parse_authors(row["Authors"])
+                    # Add nodes
+                    for a in authors_list:
+                        if a and a.strip():
+                            if a not in G_filtered:
+                                G_filtered.add_node(a)
+                    # Add edges between all pairs of authors on this paper
+                    for i, a in enumerate(authors_list):
+                        for b in authors_list[i+1:]:
+                            if a and b and a.strip() and b.strip():
+                                if G_filtered.has_edge(a, b):
+                                    G_filtered[a][b]["weight"] += 1
+                                else:
+                                    G_filtered.add_edge(a, b, weight=1)
+                
+                # Use filtered graph
+                graph_to_use = G_filtered
+                filter_note = f" (filtered to {len(selected_threads_tab2)} thread{'s' if len(selected_threads_tab2) > 1 else ''})"
             else:
-                fig = coauthors.plot_coauthor_network(H, author)
-                st.subheader("Co-author network")
+                graph_to_use = G
+                filter_note = ""
+            
+            # Check if author exists in the (possibly filtered) graph
+            if author not in graph_to_use:
+                if selected_threads_tab2:
+                    st.warning(f"**{author}** has no papers in the selected thread(s). Try removing the thread filter or selecting different threads.")
+                else:
+                    st.warning(f"**{author}** not found in the co-author network.")
+            else:
+                # Get co-authors by degree
+                degree_dfs = coauthors.get_coauthors_by_degree(graph_to_use, author, max_degree=max_degree)
                 
-                # Visual color legend with colored circles
-                legend_colors = ["#d62828", "#2a9d8f", "#457b9d", "#8338ec", "#6c757d"]
-                legend_labels = ["Selected author", "1st degree", "2nd degree", "3rd degree", "4th degree"]
-                
-                # Build legend HTML with colored circles
-                legend_items = []
+                # Display tables in columns (up to 4)
+                if degree_dfs:
+                    degree_labels = ["1st degree (direct)", "2nd degree", "3rd degree", "4th degree"]
+                    cols = st.columns(min(len(degree_dfs), 4))
+                    
+                    for i, (col, degree_df) in enumerate(zip(cols, degree_dfs)):
+                        with col:
+                            st.subheader(degree_labels[i])
+                            if degree_df.empty:
+                                st.write(f"No {degree_labels[i].lower()} co-authors found.")
+                            else:
+                                st.caption(f"{len(degree_df)} authors")
+                                # Fix index to start at 1
+                                degree_df_display = degree_df.copy()
+                                degree_df_display.index = range(1, len(degree_df_display) + 1)
+                                st.dataframe(degree_df_display, use_container_width=True)
+
+                # Network visualization
+                H = coauthors.build_coauthor_network(graph_to_use, author, max_degree=max_degree)
+                if H.number_of_nodes() == 0:
+                    st.info("No co-author network to display for this author.")
+                else:
+                    fig = coauthors.plot_coauthor_network(H, author)
+                    st.subheader(f"Co-author network{filter_note}")
+                    
+                    # Visual color legend with colored circles
+                    legend_colors = ["#d62828", "#2a9d8f", "#457b9d", "#8338ec", "#6c757d"]
+                    legend_labels = ["Selected author", "1st degree", "2nd degree", "3rd degree", "4th degree"]
+                    
+                    # Build legend HTML with colored circles
+                    legend_items = []
                 for i in range(max_degree + 1):
                     color = legend_colors[i]
                     label = legend_labels[i]
