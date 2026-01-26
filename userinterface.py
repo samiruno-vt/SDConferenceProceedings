@@ -551,11 +551,18 @@ with tab1:
                 showlegend=False
             ))
 
-        # Get metric values for sizing
+        # Get metric values for sizing (based on radio selection)
         metric_key = "num_papers" if size_mode == "Total Papers" else "num_coauthors"
         all_vals = [H.nodes[n].get(metric_key, 0) for n in H.nodes()]
         max_val = max(all_vals) if all_vals else 1
         min_val = min(all_vals) if all_vals else 0
+        
+        # Get the OTHER metric for color encoding
+        color_metric_key = "num_coauthors" if size_mode == "Total Papers" else "num_papers"
+        color_metric_label = "Co-authors" if size_mode == "Total Papers" else "Total Papers"
+        all_color_vals = [H.nodes[n].get(color_metric_key, 0) for n in H.nodes()]
+        max_color_val = max(all_color_vals) if all_color_vals else 1
+        min_color_val = min(all_color_vals) if all_color_vals else 0
         
         # Much more aggressive node sizing
         def node_size(val):
@@ -566,7 +573,7 @@ with tab1:
             # Use power curve for dramatic difference: small nodes ~15px, large nodes ~80px
             return 15 + (normalized ** 0.5) * 65
 
-        node_x, node_y, node_text, node_sizes = [], [], [], []
+        node_x, node_y, node_text, node_sizes, node_colors = [], [], [], [], []
         
         for n in H.nodes():
             x, y = pos[n]
@@ -575,6 +582,10 @@ with tab1:
             
             val = H.nodes[n].get(metric_key, 0)
             node_sizes.append(node_size(val))
+            
+            # Color value (the other metric)
+            color_val = H.nodes[n].get(color_metric_key, 0)
+            node_colors.append(color_val)
 
             npapers = H.nodes[n].get("num_papers", 0)
             nco = H.nodes[n].get("num_coauthors", 0)
@@ -595,7 +606,16 @@ with tab1:
             hovertext=node_text,
             marker=dict(
                 size=node_sizes,
-                color="#2a9d8f",  # Single teal color for all nodes
+                color=node_colors,
+                colorscale="Tealgrn",  # Teal to green - clean, professional
+                showscale=True,
+                colorbar=dict(
+                    title=dict(text=color_metric_label, side="right"),
+                    thickness=15,
+                    len=0.5,
+                    y=0.5,
+                    tickfont=dict(size=11)
+                ),
                 line=dict(width=2, color="white"),
                 opacity=0.9,
                 sizemode="diameter"
@@ -606,7 +626,7 @@ with tab1:
         fig.update_layout(
             showlegend=False,
             plot_bgcolor="#f8f9fa",
-            margin=dict(l=10, r=10, t=10, b=10),
+            margin=dict(l=10, r=80, t=10, b=10),  # Extra right margin for colorbar
             height=750,
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
@@ -616,8 +636,8 @@ with tab1:
 
         st.plotly_chart(fig, use_container_width=True)
         
-        # Updated caption without color reference
+        # Updated caption with both encodings
         st.caption(f"Showing {H.number_of_nodes()} authors and {H.number_of_edges()} coauthorship links.")
-        st.caption(f"**Node size** = {size_mode} · **Edge thickness** = shared papers (thicker = more collaborations)")
+        st.caption(f"**Node size** = {size_mode} · **Node color** = {color_metric_label} · **Edge thickness** = shared papers")
 
 
