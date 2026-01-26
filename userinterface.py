@@ -98,7 +98,117 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 # Tab navigation
 # -------------------
 
-tab1, tab2, tab3 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers"])
+tab1, tab2, tab3, tab4 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number"])
+
+
+# -----------------------
+# Tab 4: Sterman Number
+# -----------------------
+
+# The reference author for calculating "degrees of separation"
+REFERENCE_AUTHOR = "John D Sterman"
+
+with tab4:
+    st.header("Sterman Number")
+    
+    st.markdown(
+        f"""
+        Find your **Sterman Number** — the degrees of co-authorship separation from **{REFERENCE_AUTHOR}**.
+        
+        - **Sterman Number 1**: You co-authored a paper directly with {REFERENCE_AUTHOR}
+        - **Sterman Number 2**: You co-authored with someone who co-authored with {REFERENCE_AUTHOR}
+        - And so on...
+        """
+    )
+    
+    # Check if reference author exists in graph
+    reference_author_in_graph = None
+    for node in G.nodes():
+        if coauthors.normalize_author_name(REFERENCE_AUTHOR) == coauthors.normalize_author_name(node):
+            reference_author_in_graph = node
+            break
+    
+    if reference_author_in_graph is None:
+        st.error(f"**{REFERENCE_AUTHOR}** not found in the co-author network. Please check the reference author name.")
+    else:
+        author_query_tab4 = st.text_input("Search for an author", key="sterman_author_search")
+        
+        if author_query_tab4:
+            all_authors = sorted(G.nodes())
+            candidates = coauthors.search_authors(author_query_tab4, all_authors, limit=10, score_cutoff=60)
+            
+            if not candidates:
+                st.info("No matching authors found.")
+            else:
+                author_names = [name for name, score in candidates]
+                selected_author_tab4 = st.radio("Select an author:", options=author_names, key="sterman_author_select")
+                
+                if selected_author_tab4:
+                    st.markdown("---")
+                    
+                    # Check if it's the reference author themselves
+                    if selected_author_tab4 == reference_author_in_graph:
+                        st.success(f"🎉 **{selected_author_tab4}** IS {REFERENCE_AUTHOR}! Sterman Number = **0**")
+                    else:
+                        # Find shortest path using NetworkX
+                        try:
+                            # Check if path exists
+                            if nx.has_path(G, selected_author_tab4, reference_author_in_graph):
+                                # Get shortest path length (this is the Sterman Number)
+                                sterman_number = nx.shortest_path_length(G, selected_author_tab4, reference_author_in_graph)
+                                
+                                # Get all shortest paths (there may be multiple)
+                                all_paths = list(nx.all_shortest_paths(G, selected_author_tab4, reference_author_in_graph))
+                                
+                                # Display the Sterman Number prominently
+                                st.success(f"🔢 **{selected_author_tab4}** has a Sterman Number of **{sterman_number}**")
+                                
+                                # Show paths
+                                if len(all_paths) == 1:
+                                    st.markdown(f"**Path to {REFERENCE_AUTHOR}:**")
+                                else:
+                                    st.markdown(f"**{len(all_paths)} shortest paths to {REFERENCE_AUTHOR}:**")
+                                
+                                # Limit to showing first 10 paths if there are many
+                                paths_to_show = all_paths[:10]
+                                
+                                for i, path in enumerate(paths_to_show, 1):
+                                    # Format path as: Author1 → Author2 → Author3
+                                    path_str = " → ".join(path)
+                                    st.markdown(f"{i}. {path_str}" if len(paths_to_show) > 1 else path_str)
+                                
+                                if len(all_paths) > 10:
+                                    st.caption(f"Showing 10 of {len(all_paths)} shortest paths.")
+                                
+                                # Visualize the path network
+                                st.markdown("---")
+                                st.subheader("Path Visualization")
+                                
+                                # Build a small graph with just the nodes in the paths
+                                path_graph = nx.Graph()
+                                for path in paths_to_show:
+                                    for j in range(len(path) - 1):
+                                        a, b = path[j], path[j + 1]
+                                        weight = G[a][b].get("weight", 1)
+                                        path_graph.add_edge(a, b, weight=weight)
+                                
+                                # Assign levels based on distance from selected author
+                                for node in path_graph.nodes():
+                                    dist = nx.shortest_path_length(path_graph, selected_author_tab4, node)
+                                    path_graph.nodes[node]["level"] = dist
+                                
+                                # Use the existing plot function
+                                fig = coauthors.plot_coauthor_network(path_graph, selected_author_tab4)
+                                
+                                if fig:
+                                    st.plotly_chart(fig, use_container_width=True)
+                            
+                            else:
+                                st.warning(f"⚠️ **{selected_author_tab4}** is not connected to {REFERENCE_AUTHOR} in the co-author network.")
+                                st.markdown("This means there is no chain of co-authorships linking them.")
+                        
+                        except Exception as e:
+                            st.error(f"Error finding path: {str(e)}")
 
 
 # -----------------------
