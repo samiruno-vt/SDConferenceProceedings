@@ -98,7 +98,268 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 # Tab navigation
 # -------------------
 
-tab1, tab2, tab3, tab4 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number", "Organization Network"])
+
+
+# -----------------------
+# Tab 5: Organization Network
+# -----------------------
+
+with tab5:
+    st.header("Organization Network")
+    
+    st.markdown(
+        """
+        Explore collaborations between organizations based on co-authored papers.
+        
+        *Note: Organization data is available for only a subset of authors and may have inconsistent naming.*
+        """
+    )
+    
+    # Build org-to-org collaboration data
+    # We need to map authors to orgs, then find cross-org collaborations
+    
+    @st.cache_data
+    def build_org_collaboration_data(_G, _author_stats, _df):
+        """
+        Build organization collaboration network.
+        Returns: org_graph (networkx Graph), author_org_map (dict)
+        """
+        # Create author -> org mapping
+        author_org_map = {}
+        for _, row in _author_stats.iterrows():
+            if pd.notna(row['Organization']) and row['Organization'].strip():
+                # Normalize author name to match graph
+                author_name = coauthors.normalize_author_name(row['Author'])
+                author_org_map[author_name] = row['Organization'].strip()
+        
+        # Also try original names
+        for _, row in _author_stats.iterrows():
+            if pd.notna(row['Organization']) and row['Organization'].strip():
+                author_org_map[row['Author']] = row['Organization'].strip()
+        
+        # Build org collaboration graph from papers
+        org_collabs = {}  # (org1, org2) -> set of paper indices
+        
+        for idx, row in _df.iterrows():
+            authors_list = coauthors.parse_authors(row['Authors'])
+            
+            # Get orgs for authors on this paper
+            paper_orgs = []
+            for author in authors_list:
+                org = author_org_map.get(author) or author_org_map.get(coauthors.normalize_author_name(author))
+                if org:
+                    paper_orgs.append((author, org))
+            
+            # Find cross-org collaborations on this paper
+            for i, (auth1, org1) in enumerate(paper_orgs):
+                for auth2, org2 in paper_orgs[i+1:]:
+                    if org1 != org2:
+                        # Consistent ordering
+                        key = tuple(sorted([org1, org2]))
+                        if key not in org_collabs:
+                            org_collabs[key] = set()
+                        org_collabs[key].add(idx)
+        
+        # Build networkx graph
+        org_graph = nx.Graph()
+        for (org1, org2), paper_set in org_collabs.items():
+            org_graph.add_edge(org1, org2, weight=len(paper_set), papers=paper_set)
+        
+        return org_graph, author_org_map
+    
+    # Build the org network
+    org_graph, author_org_map = build_org_collaboration_data(G, author_stats, df)
+    
+    # Stats
+    st.caption(f"**{org_graph.number_of_nodes()}** organizations with cross-org collaborations · **{org_graph.number_of_edges()}** collaboration links")
+    
+    # Thread filter
+    all_threads_tab5 = sorted([t for t in df["Category"].dropna().unique() if t])
+    selected_threads_tab5 = st.multiselect(
+        "Filter by thread (leave empty for all)",
+        options=all_threads_tab5,
+        default=[],
+        key="org_thread_filter",
+        help="Only show collaborations from papers in these threads"
+    )
+    
+    # If thread filter is active, rebuild the graph
+    if selected_threads_tab5:
+        df_filtered_tab5 = df[df["Category"].isin(selected_threads_tab5)]
+        org_graph_filtered, _ = build_org_collaboration_data(G, author_stats, df_filtered_tab5)
+        org_graph_to_use = org_graph_filtered
+        st.caption(f"Filtered: **{org_graph_to_use.number_of_nodes()}** organizations · **{org_graph_to_use.number_of_edges()}** collaboration links")
+    else:
+        org_graph_to_use = org_graph
+    
+    # Search for organization
+    org_query = st.text_input("Search for an organization", key="org_search")
+    
+    if org_query:
+        # Fuzzy search for orgs
+        all_orgs = sorted(org_graph_to_use.nodes())
+        
+        if not all_orgs:
+            st.warning("No organizations found with collaborations in the selected filters.")
+        else:
+            # Simple fuzzy matching
+            q_lower = org_query.lower()
+            matches = [(org, 100 if q_lower in org.lower() else 0) for org in all_orgs]
+            matches = [(org, score) for org, score in matches if score > 0]
+            
+            # If no substring matches, use fuzzy
+            if not matches:
+                from rapidfuzz import process, fuzz
+                fuzzy_results = process.extract(org_query, all_orgs, scorer=fuzz.WRatio, limit=10)
+                matches = [(name, score) for name, score, _ in fuzzy_results if score >= 60]
+            
+            matches = sorted(matches, key=lambda x: (-x[1], x[0]))[:10]
+            
+            if not matches:
+                st.info("No matching organizations found.")
+            else:
+                org_names = [name for name, score in matches]
+                selected_org = st.radio("Select an organization:", options=org_names, key="org_select")
+                
+                if selected_org:
+                    st.markdown("---")
+                    st.markdown(f"**Selected organization:** {selected_org}")
+                    
+                    # Get collaborating organizations (1st degree)
+                    if selected_org not in org_graph_to_use:
+                        st.warning("This organization has no collaborations in the current filter.")
+                    else:
+                        neighbors = list(org_graph_to_use.neighbors(selected_org))
+                        
+                        if not neighbors:
+                            st.info("No collaborating organizations found.")
+                        else:
+                            # Build table of collaborating orgs
+                            collab_data = []
+                            for neighbor in neighbors:
+                                weight = org_graph_to_use[selected_org][neighbor].get('weight', 1)
+                                collab_data.append({
+                                    'Organization': neighbor,
+                                    'Collaborative Papers': weight
+                                })
+                            
+                            collab_df = pd.DataFrame(collab_data)
+                            collab_df = collab_df.sort_values('Collaborative Papers', ascending=False)
+                            collab_df.index = range(1, len(collab_df) + 1)
+                            
+                            st.subheader(f"Collaborating Organizations ({len(collab_df)})")
+                            st.dataframe(collab_df, use_container_width=True)
+                            
+                            # Network visualization
+                            st.subheader("Collaboration Network")
+                            
+                            # Build subgraph for visualization
+                            viz_nodes = [selected_org] + neighbors
+                            H = org_graph_to_use.subgraph(viz_nodes).copy()
+                            
+                            # Layout
+                            if H.number_of_nodes() > 0:
+                                pos = nx.spring_layout(H, seed=42, k=2/np.sqrt(H.number_of_nodes()) if H.number_of_nodes() > 1 else 1, iterations=100)
+                                
+                                # Edge weights for thickness
+                                edge_weights = [H[u][v].get('weight', 1) for u, v in H.edges()]
+                                max_weight = max(edge_weights) if edge_weights else 1
+                                min_weight = min(edge_weights) if edge_weights else 1
+                                
+                                # Build edges grouped by weight
+                                edge_traces = []
+                                for u, v in H.edges():
+                                    x0, y0 = pos[u]
+                                    x1, y1 = pos[v]
+                                    weight = H[u][v].get('weight', 1)
+                                    
+                                    if max_weight > min_weight:
+                                        normalized = (weight - min_weight) / (max_weight - min_weight)
+                                    else:
+                                        normalized = 0.5
+                                    
+                                    line_width = 1.5 + normalized * 6
+                                    gray_val = int(170 - normalized * 90)
+                                    
+                                    edge_traces.append(go.Scatter(
+                                        x=[x0, x1, None],
+                                        y=[y0, y1, None],
+                                        mode="lines",
+                                        line=dict(width=line_width, color=f"rgb({gray_val},{gray_val},{gray_val})"),
+                                        hoverinfo="text",
+                                        hovertext=f"{u} ↔ {v}: {weight} papers",
+                                        showlegend=False
+                                    ))
+                                
+                                # Build nodes
+                                node_x, node_y, node_text, node_colors, node_sizes = [], [], [], [], []
+                                node_names = []
+                                
+                                for n in H.nodes():
+                                    x, y = pos[n]
+                                    node_x.append(x)
+                                    node_y.append(y)
+                                    node_names.append(n)
+                                    
+                                    # Count total collaborative papers for this org
+                                    total_papers = sum(H[n][nbr].get('weight', 1) for nbr in H.neighbors(n))
+                                    node_text.append(f"<b>{n}</b><br>Collaborations: {H.degree(n)}<br>Total papers: {total_papers}")
+                                    
+                                    if n == selected_org:
+                                        node_colors.append("#d62828")  # Red for selected
+                                        node_sizes.append(50)
+                                    else:
+                                        node_colors.append("#2a9d8f")  # Teal for others
+                                        node_sizes.append(35)
+                                
+                                # Hide text labels if too many nodes
+                                show_labels = H.number_of_nodes() <= 20
+                                
+                                node_trace = go.Scatter(
+                                    x=node_x, y=node_y,
+                                    mode="markers+text" if show_labels else "markers",
+                                    text=node_names if show_labels else None,
+                                    textposition="top center" if show_labels else None,
+                                    textfont=dict(size=9, color="#333333") if show_labels else None,
+                                    hoverinfo="text",
+                                    hovertext=node_text,
+                                    marker=dict(
+                                        size=node_sizes,
+                                        color=node_colors,
+                                        line=dict(width=2, color="white"),
+                                        opacity=0.9
+                                    ),
+                                    showlegend=False
+                                )
+                                
+                                fig = go.Figure(data=edge_traces + [node_trace])
+                                fig.update_layout(
+                                    showlegend=False,
+                                    plot_bgcolor="#f8f9fa",
+                                    margin=dict(l=5, r=5, t=5, b=5),
+                                    height=600,
+                                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                                    dragmode="pan",
+                                    hovermode="closest"
+                                )
+                                
+                                # Legend
+                                legend_html = (
+                                    '<div style="display:flex; align-items:center; gap:16px; margin-bottom:8px;">'
+                                    '<span style="display:inline-flex; align-items:center;">'
+                                    '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#d62828; margin-right:5px;"></span>'
+                                    '<span style="color:#555; font-size:13px;">Selected organization</span></span>'
+                                    '<span style="display:inline-flex; align-items:center;">'
+                                    '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#2a9d8f; margin-right:5px;"></span>'
+                                    '<span style="color:#555; font-size:13px;">Collaborating organization</span></span>'
+                                    '<span style="color:#555; font-size:13px; margin-left:8px;">· Edge thickness = collaborative papers</span>'
+                                    '</div>'
+                                )
+                                st.markdown(legend_html, unsafe_allow_html=True)
+                                
+                                st.plotly_chart(fig, use_container_width=True)
 
 
 # -----------------------
