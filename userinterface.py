@@ -174,24 +174,8 @@ with tab5:
     # Stats
     st.caption(f"**{org_graph.number_of_nodes()}** organizations with cross-org collaborations · **{org_graph.number_of_edges()}** collaboration links")
     
-    # Thread filter
-    all_threads_tab5 = sorted([t for t in df["Category"].dropna().unique() if t])
-    selected_threads_tab5 = st.multiselect(
-        "Filter by thread (leave empty for all)",
-        options=all_threads_tab5,
-        default=[],
-        key="org_thread_filter",
-        help="Only show collaborations from papers in these threads"
-    )
-    
-    # If thread filter is active, rebuild the graph
-    if selected_threads_tab5:
-        df_filtered_tab5 = df[df["Category"].isin(selected_threads_tab5)]
-        org_graph_filtered, _ = build_org_collaboration_data(G, author_stats, df_filtered_tab5)
-        org_graph_to_use = org_graph_filtered
-        st.caption(f"Filtered: **{org_graph_to_use.number_of_nodes()}** organizations · **{org_graph_to_use.number_of_edges()}** collaboration links")
-    else:
-        org_graph_to_use = org_graph
+    # Use the full org graph (no thread filtering)
+    org_graph_to_use = org_graph
     
     # Search for organization
     org_query = st.text_input("Search for an organization", key="org_search")
@@ -354,7 +338,7 @@ with tab5:
                                     '<span style="display:inline-flex; align-items:center;">'
                                     '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#2a9d8f; margin-right:5px;"></span>'
                                     '<span style="color:#555; font-size:13px;">Collaborating organization</span></span>'
-                                    '<span style="color:#555; font-size:13px; margin-left:8px;">· Edge thickness = collaborative papers</span>'
+                                    '<span style="color:#555; font-size:13px; margin-left:8px;">Edge thickness = collaborative papers</span>'
                                     '</div>'
                                 )
                                 st.markdown(legend_html, unsafe_allow_html=True)
