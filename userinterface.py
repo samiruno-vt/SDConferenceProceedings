@@ -161,7 +161,7 @@ with tab4:
                                 all_paths = list(nx.all_shortest_paths(G, selected_author_tab4, reference_author_in_graph))
                                 
                                 # Display the Sterman Number prominently
-                                st.success(f"🔢 **{selected_author_tab4}** has a Sterman Number of **{sterman_number}**")
+                                st.success(f"**{selected_author_tab4}** has a Sterman Number of **{sterman_number}**")
                                 
                                 # Show paths
                                 if len(all_paths) == 1:
@@ -172,10 +172,10 @@ with tab4:
                                 # Limit to showing first 10 paths if there are many
                                 paths_to_show = all_paths[:10]
                                 
-                                for i, path in enumerate(paths_to_show, 1):
+                                for path in paths_to_show:
                                     # Format path as: Author1 → Author2 → Author3
                                     path_str = " → ".join(path)
-                                    st.markdown(f"{i}. {path_str}" if len(paths_to_show) > 1 else path_str)
+                                    st.markdown(f"- {path_str}")
                                 
                                 if len(all_paths) > 10:
                                     st.caption(f"Showing 10 of {len(all_paths)} shortest paths.")
@@ -192,15 +192,94 @@ with tab4:
                                         weight = G[a][b].get("weight", 1)
                                         path_graph.add_edge(a, b, weight=weight)
                                 
-                                # Assign levels based on distance from selected author
-                                for node in path_graph.nodes():
-                                    dist = nx.shortest_path_length(path_graph, selected_author_tab4, node)
-                                    path_graph.nodes[node]["level"] = dist
-                                
-                                # Use the existing plot function
-                                fig = coauthors.plot_coauthor_network(path_graph, selected_author_tab4)
-                                
-                                if fig:
+                                # Custom visualization for path graph
+                                if path_graph.number_of_nodes() > 0:
+                                    # Layout
+                                    pos = nx.spring_layout(path_graph, seed=42, k=2, iterations=100)
+                                    
+                                    # Build edges
+                                    edge_x, edge_y = [], []
+                                    for u, v in path_graph.edges():
+                                        x0, y0 = pos[u]
+                                        x1, y1 = pos[v]
+                                        edge_x.extend([x0, x1, None])
+                                        edge_y.extend([y0, y1, None])
+                                    
+                                    edge_trace = go.Scatter(
+                                        x=edge_x, y=edge_y,
+                                        mode="lines",
+                                        line=dict(width=2, color="#888888"),
+                                        hoverinfo="skip",
+                                        showlegend=False
+                                    )
+                                    
+                                    # Build nodes with custom colors and sizes
+                                    node_x, node_y, node_text, node_colors, node_sizes = [], [], [], [], []
+                                    node_names = []
+                                    
+                                    for n in path_graph.nodes():
+                                        x, y = pos[n]
+                                        node_x.append(x)
+                                        node_y.append(y)
+                                        node_names.append(n)
+                                        node_text.append(f"<b>{n}</b>")
+                                        
+                                        # Colors and sizes: selected author (red, large), Sterman (gold, large), others (teal, medium)
+                                        if n == selected_author_tab4:
+                                            node_colors.append("#d62828")  # Red
+                                            node_sizes.append(50)
+                                        elif n == reference_author_in_graph:
+                                            node_colors.append("#f4a261")  # Gold/orange
+                                            node_sizes.append(50)
+                                        else:
+                                            node_colors.append("#2a9d8f")  # Teal
+                                            node_sizes.append(35)
+                                    
+                                    node_trace = go.Scatter(
+                                        x=node_x, y=node_y,
+                                        mode="markers+text",
+                                        text=node_names,
+                                        textposition="top center",
+                                        textfont=dict(size=10, color="#333333"),
+                                        hoverinfo="text",
+                                        hovertext=node_text,
+                                        marker=dict(
+                                            size=node_sizes,
+                                            color=node_colors,
+                                            line=dict(width=2, color="white"),
+                                            opacity=0.9
+                                        ),
+                                        showlegend=False
+                                    )
+                                    
+                                    fig = go.Figure(data=[edge_trace, node_trace])
+                                    fig.update_layout(
+                                        showlegend=False,
+                                        plot_bgcolor="#f8f9fa",
+                                        margin=dict(l=5, r=5, t=5, b=5),
+                                        height=500,
+                                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                                        dragmode="pan",
+                                        hovermode="closest"
+                                    )
+                                    
+                                    # Legend
+                                    legend_html = (
+                                        '<div style="display:flex; align-items:center; gap:16px; margin-bottom:8px;">'
+                                        '<span style="display:inline-flex; align-items:center;">'
+                                        '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#d62828; margin-right:5px;"></span>'
+                                        '<span style="color:#555; font-size:13px;">Selected author</span></span>'
+                                        '<span style="display:inline-flex; align-items:center;">'
+                                        '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#f4a261; margin-right:5px;"></span>'
+                                        f'<span style="color:#555; font-size:13px;">{REFERENCE_AUTHOR}</span></span>'
+                                        '<span style="display:inline-flex; align-items:center;">'
+                                        '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:#2a9d8f; margin-right:5px;"></span>'
+                                        '<span style="color:#555; font-size:13px;">Intermediate</span></span>'
+                                        '</div>'
+                                    )
+                                    st.markdown(legend_html, unsafe_allow_html=True)
+                                    
                                     st.plotly_chart(fig, use_container_width=True)
                             
                             else:
