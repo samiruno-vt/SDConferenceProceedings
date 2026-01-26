@@ -32,12 +32,14 @@ def get_similar_papers(
     df,
     k = 10,
     year_min = None,
-    year_max = None
+    year_max = None,
+    threads = None
 ):
     """
     paper_idx: integer row index in df
     embeddings: numpy array (num_papers, dim), normalized
     df: DataFrame with at least Title, Abstract, Authors, Year
+    threads: optional list of thread/category names to filter by
     Returns a DataFrame: Title, Year, Abstract, Authors
     """
 
@@ -54,6 +56,10 @@ def get_similar_papers(
         mask &= df["Year"].values >= year_min
     if year_max is not None:
         mask &= df["Year"].values <= year_max
+    
+    # Filter by threads if specified
+    if threads is not None and len(threads) > 0:
+        mask &= df["Category"].isin(threads).values
 
     candidate_idxs = np.where(mask)[0]
     if len(candidate_idxs) == 0:
