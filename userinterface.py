@@ -178,7 +178,7 @@ with tab6:
         )
     
     with col_top_n:
-        top_n_orgs = st.slider("Number of organizations to display in table", 10, 100, 30, key="org_papers_top_n")
+        top_n_orgs = st.slider("Number of organizations to display", 10, 100, 30, key="org_papers_top_n")
     
     # Filter papers by year and thread
     df_for_ranking = df.copy()
