@@ -41,10 +41,46 @@ def load_author_stats():
     return pd.read_parquet(os.path.join("data", "author_stats_from05_withCountryOrg.parquet"))
 
 
+# Pre-compute commonly used data structures (cached)
+@st.cache_data
+def get_all_threads(_df):
+    """Get sorted list of all unique threads"""
+    return sorted([t for t in _df["Category"].dropna().unique() if t])
+
+@st.cache_data
+def get_all_authors_sorted(_G):
+    """Get sorted list of all authors"""
+    return sorted(_G.nodes())
+
+@st.cache_data
+def get_author_org_mapping_global(_author_stats):
+    """Create author -> org mapping (used by multiple tabs)"""
+    author_org = {}
+    for _, row in _author_stats.iterrows():
+        if pd.notna(row['Organization']) and row['Organization'].strip():
+            author_org[row['Author']] = row['Organization'].strip()
+            # Also add normalized version
+            from coauthors import normalize_author_name
+            author_org[normalize_author_name(row['Author'])] = row['Organization'].strip()
+    return author_org
+
+@st.cache_data  
+def get_all_orgs_list(_author_stats):
+    """Get sorted list of all unique organizations"""
+    orgs = _author_stats['Organization'].dropna().unique()
+    return sorted([o.strip() for o in orgs if o.strip()])
+
+
 df = load_dataframe()
 embeddings = load_embeddings()
 G = load_graph()
 author_stats = load_author_stats()
+
+# Pre-compute these once at startup
+all_threads_global = get_all_threads(df)
+all_authors_sorted = get_all_authors_sorted(G)
+author_org_mapping_global = get_author_org_mapping_global(author_stats)
+all_orgs_list_global = get_all_orgs_list(author_stats)
 
 
 # -------------------
@@ -110,43 +146,23 @@ with tab7:
     
     st.markdown(
         """
-        Search for an organization to see all papers authored by members of that organization.
+        Search for an organization to see all papers where at least one author is affiliated with that organization.
         """
     )
     
-    # Build author -> org mapping (reuse cached function if available)
-    @st.cache_data
-    def get_author_org_mapping_tab7(_author_stats):
-        """Create author -> org mapping"""
-        author_org = {}
-        for _, row in _author_stats.iterrows():
-            if pd.notna(row['Organization']) and row['Organization'].strip():
-                author_org[row['Author']] = row['Organization'].strip()
-                author_org[coauthors.normalize_author_name(row['Author'])] = row['Organization'].strip()
-        return author_org
-    
-    @st.cache_data
-    def get_all_orgs_tab7(_author_stats):
-        """Get list of all unique organizations"""
-        orgs = _author_stats['Organization'].dropna().unique()
-        return sorted([o.strip() for o in orgs if o.strip()])
-    
-    author_org_mapping_tab7 = get_author_org_mapping_tab7(author_stats)
-    all_orgs_list = get_all_orgs_tab7(author_stats)
-    
-    # Search for organization
+    # Search for organization (use pre-computed lists)
     org_query_tab7 = st.text_input("Search for an organization", key="org_papers_search")
     
     if org_query_tab7:
         # Fuzzy search for orgs
         q_lower = org_query_tab7.lower()
-        matches = [(org, 100 if q_lower in org.lower() else 0) for org in all_orgs_list]
+        matches = [(org, 100 if q_lower in org.lower() else 0) for org in all_orgs_list_global]
         matches = [(org, score) for org, score in matches if score > 0]
         
         # If no substring matches, use fuzzy
         if not matches:
             from rapidfuzz import process, fuzz
-            fuzzy_results = process.extract(org_query_tab7, all_orgs_list, scorer=fuzz.WRatio, limit=10)
+            fuzzy_results = process.extract(org_query_tab7, all_orgs_list_global, scorer=fuzz.WRatio, limit=10)
             matches = [(name, score) for name, score, _ in fuzzy_results if score >= 60]
         
         matches = sorted(matches, key=lambda x: (-x[1], x[0]))[:10]
@@ -160,19 +176,36 @@ with tab7:
             if selected_org_tab7:
                 st.markdown("---")
                 
-                # Thread filter
-                all_threads_tab7 = sorted([t for t in df["Category"].dropna().unique() if t])
-                selected_threads_tab7 = st.multiselect(
-                    "Filter by thread (leave empty for all)",
-                    options=all_threads_tab7,
-                    default=[],
-                    key="org_papers_thread_filter"
-                )
+                # Filters row: year range and thread
+                col_year_tab7, col_thread_tab7 = st.columns(2)
+                
+                with col_year_tab7:
+                    year_min_tab7, year_max_tab7 = st.slider(
+                        "Year range",
+                        min_value=int(df["Year"].min()),
+                        max_value=int(df["Year"].max()),
+                        value=(int(df["Year"].min()), int(df["Year"].max())),
+                        key="org_papers_year_filter"
+                    )
+                
+                with col_thread_tab7:
+                    # Thread filter (use pre-computed list)
+                    selected_threads_tab7 = st.multiselect(
+                        "Filter by thread (leave empty for all)",
+                        options=all_threads_global,
+                        default=[],
+                        key="org_papers_thread_filter"
+                    )
                 
                 # Find all papers by this organization
                 org_papers = []
                 
                 for idx, row in df.iterrows():
+                    # Check year filter
+                    paper_year = row.get('Year')
+                    if paper_year is not None and (paper_year < year_min_tab7 or paper_year > year_max_tab7):
+                        continue
+                    
                     # Check thread filter
                     if selected_threads_tab7 and row.get('Category') not in selected_threads_tab7:
                         continue
@@ -182,7 +215,7 @@ with tab7:
                     # Check if any author is from the selected org
                     has_org_author = False
                     for author in authors_list:
-                        org = author_org_mapping_tab7.get(author) or author_org_mapping_tab7.get(coauthors.normalize_author_name(author))
+                        org = author_org_mapping_global.get(author) or author_org_mapping_global.get(coauthors.normalize_author_name(author))
                         if org == selected_org_tab7:
                             has_org_author = True
                             break
@@ -201,16 +234,20 @@ with tab7:
                     papers_df = papers_df.sort_values('Year', ascending=False)
                     papers_df.index = range(1, len(papers_df) + 1)
                     
-                    thread_note = f" in selected thread(s)" if selected_threads_tab7 else ""
-                    st.markdown(f"**{selected_org_tab7}**: {len(papers_df)} paper{'s' if len(papers_df) != 1 else ''}{thread_note}")
+                    # Build filter note
+                    filter_notes = []
+                    if year_min_tab7 != int(df["Year"].min()) or year_max_tab7 != int(df["Year"].max()):
+                        filter_notes.append(f"{year_min_tab7}–{year_max_tab7}")
+                    if selected_threads_tab7:
+                        filter_notes.append("selected threads")
+                    filter_note = f" ({', '.join(filter_notes)})" if filter_notes else ""
                     
-                    st.caption("💡 Double-click a cell to read full text.")
+                    st.markdown(f"**{selected_org_tab7}**: {len(papers_df)} paper{'s' if len(papers_df) != 1 else ''}{filter_note}")
+                    
+                    st.caption("Double-click a cell to read full text.")
                     st.dataframe(papers_df, use_container_width=True)
                 else:
-                    if selected_threads_tab7:
-                        st.info(f"No papers found for **{selected_org_tab7}** in the selected thread(s).")
-                    else:
-                        st.info(f"No papers found for **{selected_org_tab7}**.")
+                    st.info(f"No papers found for **{selected_org_tab7}** with the current filters.")
 
 
 # -----------------------
@@ -228,28 +265,13 @@ with tab6:
         """
     )
     
-    # Build author -> org mapping
-    @st.cache_data
-    def get_author_org_mapping(_author_stats):
-        """Create author -> org mapping"""
-        author_org = {}
-        for _, row in _author_stats.iterrows():
-            if pd.notna(row['Organization']) and row['Organization'].strip():
-                author_org[row['Author']] = row['Organization'].strip()
-                # Also add normalized version
-                author_org[coauthors.normalize_author_name(row['Author'])] = row['Organization'].strip()
-        return author_org
-    
-    author_org_mapping = get_author_org_mapping(author_stats)
-    
-    # Thread filter
+    # Thread filter (use pre-computed list)
     col_thread_tab6, col_top_n = st.columns([2, 1])
     
     with col_thread_tab6:
-        all_threads_tab6 = sorted([t for t in df["Category"].dropna().unique() if t])
         selected_threads_tab6 = st.multiselect(
             "Filter by thread (leave empty for all)",
-            options=all_threads_tab6,
+            options=all_threads_global,
             default=[],
             key="org_rankings_thread_filter"
         )
@@ -263,7 +285,7 @@ with tab6:
     else:
         df_for_ranking = df
     
-    # Count papers per organization
+    # Count papers per organization (use global mapping)
     org_paper_counts = {}
     papers_with_org = 0
     
@@ -273,7 +295,7 @@ with tab6:
         # Find orgs for authors on this paper
         paper_orgs = set()
         for author in authors_list:
-            org = author_org_mapping.get(author) or author_org_mapping.get(coauthors.normalize_author_name(author))
+            org = author_org_mapping_global.get(author) or author_org_mapping_global.get(coauthors.normalize_author_name(author))
             if org:
                 paper_orgs.add(org)
         
@@ -602,8 +624,7 @@ with tab4:
         author_query_tab4 = st.text_input("Search for an author", key="sterman_author_search")
         
         if author_query_tab4:
-            all_authors = sorted(G.nodes())
-            candidates = coauthors.search_authors(author_query_tab4, all_authors, limit=10, score_cutoff=60)
+            candidates = coauthors.search_authors(author_query_tab4, all_authors_sorted, limit=10, score_cutoff=60)
             
             if not candidates:
                 st.info("No matching authors found.")
@@ -839,11 +860,10 @@ with tab3:
                     k = st.radio("Number of results", [5, 10, 15, 20], index=1, horizontal=True)
                 
                 with col_thread:
-                    # Thread filter for similar papers
-                    all_threads_tab3 = sorted([t for t in df["Category"].dropna().unique() if t])
+                    # Thread filter for similar papers (use pre-computed list)
                     selected_threads_tab3 = st.multiselect(
                         "Filter by thread (leave empty for all)",
-                        options=all_threads_tab3,
+                        options=all_threads_global,
                         default=[],
                         key="similar_papers_thread_filter"
                     )
@@ -877,8 +897,7 @@ with tab2:
     author_query = st.text_input("Search for an author")
 
     if author_query:
-        all_authors = sorted(G.nodes())
-        candidates = coauthors.search_authors(author_query, all_authors, limit=10, score_cutoff=60)
+        candidates = coauthors.search_authors(author_query, all_authors_sorted, limit=10, score_cutoff=60)
 
         if not candidates:
             st.info("No matching authors found.")
@@ -903,11 +922,10 @@ with tab2:
                 )
             
             with col_thread:
-                # Thread filter for co-authors
-                all_threads_tab2 = sorted([t for t in df["Category"].dropna().unique() if t])
+                # Thread filter for co-authors (use pre-computed list)
                 selected_threads_tab2 = st.multiselect(
                     "Filter by thread (leave empty for all)",
-                    options=all_threads_tab2,
+                    options=all_threads_global,
                     default=[],
                     key="coauthor_thread_filter",
                     help="Only show co-authors from papers in these threads"
