@@ -178,7 +178,7 @@ with tab6:
         )
     
     with col_top_n:
-        top_n_orgs = st.slider("Top N orgs", 10, 100, 30, key="org_papers_top_n")
+        top_n_orgs = st.slider("Number of organizations to display in table", 10, 100, 30, key="org_papers_top_n")
     
     # Filter papers by year and thread
     df_for_ranking = df.copy()
@@ -227,7 +227,7 @@ with tab6:
         
         # Clickable dataframe for organization selection
         st.subheader("Organizations by Number of Papers")
-        st.caption("Click on a row to see papers from that organization")
+        st.caption("Select an organization to see its papers (filtered by the year and thread selections above)")
         
         selection = st.dataframe(
             ranking_df,
