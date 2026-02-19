@@ -98,7 +98,119 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 # Tab navigation
 # -------------------
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number", "Organization Network", "Organization Rankings"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number", "Organization Network", "Organization Rankings", "Organization Papers"])
+
+
+# -----------------------
+# Tab 7: Organization Papers
+# -----------------------
+
+with tab7:
+    st.header("Organization Papers")
+    
+    st.markdown(
+        """
+        Search for an organization to see all papers authored by members of that organization.
+        """
+    )
+    
+    # Build author -> org mapping (reuse cached function if available)
+    @st.cache_data
+    def get_author_org_mapping_tab7(_author_stats):
+        """Create author -> org mapping"""
+        author_org = {}
+        for _, row in _author_stats.iterrows():
+            if pd.notna(row['Organization']) and row['Organization'].strip():
+                author_org[row['Author']] = row['Organization'].strip()
+                author_org[coauthors.normalize_author_name(row['Author'])] = row['Organization'].strip()
+        return author_org
+    
+    @st.cache_data
+    def get_all_orgs_tab7(_author_stats):
+        """Get list of all unique organizations"""
+        orgs = _author_stats['Organization'].dropna().unique()
+        return sorted([o.strip() for o in orgs if o.strip()])
+    
+    author_org_mapping_tab7 = get_author_org_mapping_tab7(author_stats)
+    all_orgs_list = get_all_orgs_tab7(author_stats)
+    
+    # Search for organization
+    org_query_tab7 = st.text_input("Search for an organization", key="org_papers_search")
+    
+    if org_query_tab7:
+        # Fuzzy search for orgs
+        q_lower = org_query_tab7.lower()
+        matches = [(org, 100 if q_lower in org.lower() else 0) for org in all_orgs_list]
+        matches = [(org, score) for org, score in matches if score > 0]
+        
+        # If no substring matches, use fuzzy
+        if not matches:
+            from rapidfuzz import process, fuzz
+            fuzzy_results = process.extract(org_query_tab7, all_orgs_list, scorer=fuzz.WRatio, limit=10)
+            matches = [(name, score) for name, score, _ in fuzzy_results if score >= 60]
+        
+        matches = sorted(matches, key=lambda x: (-x[1], x[0]))[:10]
+        
+        if not matches:
+            st.info("No matching organizations found.")
+        else:
+            org_names_tab7 = [name for name, score in matches]
+            selected_org_tab7 = st.radio("Select an organization:", options=org_names_tab7, key="org_papers_select")
+            
+            if selected_org_tab7:
+                st.markdown("---")
+                
+                # Thread filter
+                all_threads_tab7 = sorted([t for t in df["Category"].dropna().unique() if t])
+                selected_threads_tab7 = st.multiselect(
+                    "Filter by thread (leave empty for all)",
+                    options=all_threads_tab7,
+                    default=[],
+                    key="org_papers_thread_filter"
+                )
+                
+                # Find all papers by this organization
+                org_papers = []
+                
+                for idx, row in df.iterrows():
+                    # Check thread filter
+                    if selected_threads_tab7 and row.get('Category') not in selected_threads_tab7:
+                        continue
+                    
+                    authors_list = coauthors.parse_authors(row['Authors'])
+                    
+                    # Check if any author is from the selected org
+                    has_org_author = False
+                    for author in authors_list:
+                        org = author_org_mapping_tab7.get(author) or author_org_mapping_tab7.get(coauthors.normalize_author_name(author))
+                        if org == selected_org_tab7:
+                            has_org_author = True
+                            break
+                    
+                    if has_org_author:
+                        org_papers.append({
+                            'Title': row.get('Title', ''),
+                            'Year': row.get('Year', ''),
+                            'Authors': row.get('Authors', ''),
+                            'Thread': row.get('Category', ''),
+                            'Abstract': row.get('Abstract', '')
+                        })
+                
+                if org_papers:
+                    papers_df = pd.DataFrame(org_papers)
+                    papers_df = papers_df.sort_values('Year', ascending=False)
+                    papers_df.index = range(1, len(papers_df) + 1)
+                    
+                    thread_note = f" in selected thread(s)" if selected_threads_tab7 else ""
+                    st.markdown(f"**{selected_org_tab7}**: {len(papers_df)} paper{'s' if len(papers_df) != 1 else ''}{thread_note}")
+                    
+                    st.caption("💡 Double-click a cell to read full text.")
+                    st.dataframe(papers_df, use_container_width=True)
+                else:
+                    if selected_threads_tab7:
+                        st.info(f"No papers found for **{selected_org_tab7}** in the selected thread(s).")
+                    else:
+                        st.info(f"No papers found for **{selected_org_tab7}**.")
 
 
 # -----------------------
@@ -187,7 +299,7 @@ with tab6:
         st.dataframe(ranking_df, use_container_width=True)
         
         # Simple bar chart
-        st.subheader("Top Organizations")
+        st.subheader("Top 20 Organizations")
         
         chart_df = ranking_df.head(20).copy()
         chart_df = chart_df.iloc[::-1]  # Reverse for horizontal bar chart
