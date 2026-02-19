@@ -98,7 +98,118 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 # Tab navigation
 # -------------------
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number", "Organization Network"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number", "Organization Network", "Organization Rankings"])
+
+
+# -----------------------
+# Tab 6: Organization Rankings
+# -----------------------
+
+with tab6:
+    st.header("Organization Rankings")
+    
+    st.markdown(
+        """
+        Rank organizations by number of conference papers.
+        
+        *Note: Organization data is available for only a subset of authors.*
+        """
+    )
+    
+    # Build author -> org mapping
+    @st.cache_data
+    def get_author_org_mapping(_author_stats):
+        """Create author -> org mapping"""
+        author_org = {}
+        for _, row in _author_stats.iterrows():
+            if pd.notna(row['Organization']) and row['Organization'].strip():
+                author_org[row['Author']] = row['Organization'].strip()
+                # Also add normalized version
+                author_org[coauthors.normalize_author_name(row['Author'])] = row['Organization'].strip()
+        return author_org
+    
+    author_org_mapping = get_author_org_mapping(author_stats)
+    
+    # Thread filter
+    col_thread_tab6, col_top_n = st.columns([2, 1])
+    
+    with col_thread_tab6:
+        all_threads_tab6 = sorted([t for t in df["Category"].dropna().unique() if t])
+        selected_threads_tab6 = st.multiselect(
+            "Filter by thread (leave empty for all)",
+            options=all_threads_tab6,
+            default=[],
+            key="org_rankings_thread_filter"
+        )
+    
+    with col_top_n:
+        top_n_orgs = st.slider("Number of organizations to show", 10, 100, 30, key="org_rankings_top_n")
+    
+    # Filter papers by thread if selected
+    if selected_threads_tab6:
+        df_for_ranking = df[df["Category"].isin(selected_threads_tab6)]
+    else:
+        df_for_ranking = df
+    
+    # Count papers per organization
+    org_paper_counts = {}
+    papers_with_org = 0
+    
+    for idx, row in df_for_ranking.iterrows():
+        authors_list = coauthors.parse_authors(row['Authors'])
+        
+        # Find orgs for authors on this paper
+        paper_orgs = set()
+        for author in authors_list:
+            org = author_org_mapping.get(author) or author_org_mapping.get(coauthors.normalize_author_name(author))
+            if org:
+                paper_orgs.add(org)
+        
+        # Count this paper for each org represented
+        if paper_orgs:
+            papers_with_org += 1
+            for org in paper_orgs:
+                org_paper_counts[org] = org_paper_counts.get(org, 0) + 1
+    
+    # Create ranking dataframe
+    if org_paper_counts:
+        ranking_data = [{'Organization': org, 'Papers': count} for org, count in org_paper_counts.items()]
+        ranking_df = pd.DataFrame(ranking_data)
+        ranking_df = ranking_df.sort_values('Papers', ascending=False).head(top_n_orgs)
+        ranking_df.index = range(1, len(ranking_df) + 1)
+        ranking_df.index.name = 'Rank'
+        
+        # Stats
+        total_papers = len(df_for_ranking)
+        thread_note = f" in selected thread(s)" if selected_threads_tab6 else ""
+        st.caption(f"**{len(org_paper_counts)}** organizations represented in **{papers_with_org:,}** of **{total_papers:,}** papers{thread_note}")
+        
+        st.dataframe(ranking_df, use_container_width=True)
+        
+        # Simple bar chart
+        st.subheader("Top Organizations")
+        
+        chart_df = ranking_df.head(20).copy()
+        chart_df = chart_df.iloc[::-1]  # Reverse for horizontal bar chart
+        
+        fig = go.Figure(go.Bar(
+            x=chart_df['Papers'],
+            y=chart_df['Organization'],
+            orientation='h',
+            marker_color='#2a9d8f'
+        ))
+        
+        fig.update_layout(
+            height=max(400, len(chart_df) * 25),
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="Number of Papers",
+            yaxis_title="",
+            plot_bgcolor="#f8f9fa"
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No organization data available for the selected filters.")
 
 
 # -----------------------
