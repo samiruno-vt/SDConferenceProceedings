@@ -150,7 +150,7 @@ with tab6:
     
     st.markdown(
         """
-        Explore papers by organization. Select an organization from the rankings or search to see all papers 
+        Explore papers by organization. Select an organization from the table to see all papers 
         where at least one author is affiliated with that organization.
         
         *Note: Organization data is available for only a subset of authors.*
@@ -226,7 +226,7 @@ with tab6:
         st.caption(f"**{len(org_paper_counts)}** organizations represented in **{papers_with_org:,}** of **{total_papers:,}** papers{filter_note}")
         
         # Clickable dataframe for organization selection
-        st.subheader("Organization Rankings")
+        st.subheader("Organizations by Number of Papers")
         st.caption("Click on a row to see papers from that organization")
         
         selection = st.dataframe(
@@ -235,29 +235,6 @@ with tab6:
             on_select="rerun",
             selection_mode="single-row",
         )
-        
-        # Bar chart
-        st.subheader("Top 20 Organizations")
-        
-        chart_df = ranking_df.head(20).copy()
-        chart_df = chart_df.iloc[::-1]  # Reverse for horizontal bar chart
-        
-        fig = go.Figure(go.Bar(
-            x=chart_df['Papers'],
-            y=chart_df['Organization'],
-            orientation='h',
-            marker_color='#2a9d8f'
-        ))
-        
-        fig.update_layout(
-            height=max(400, len(chart_df) * 25),
-            margin=dict(l=10, r=10, t=10, b=10),
-            xaxis_title="Number of Papers",
-            yaxis_title="",
-            plot_bgcolor="#f8f9fa"
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
         
         # Get selected organization from table
         selected_rows = selection.selection.rows if selection.selection else []
