@@ -134,156 +134,57 @@ st.sidebar.write(f"Authors: {G.number_of_nodes():,}")
 # Tab navigation
 # -------------------
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number", "Organization Network", "Organization Rankings", "Organization Papers"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Network Overview", "Find Co-authors", "Find Similar Papers", "Sterman Number", "Organization Network", "Organization Papers"])
 
 
 # -----------------------
 # Tab 7: Organization Papers
 # -----------------------
 
-with tab7:
+# -----------------------
+# Tab 6: Organization Papers (merged Rankings + Papers)
+# -----------------------
+
+with tab6:
     st.header("Organization Papers")
     
     st.markdown(
         """
-        Search for an organization to see all papers where at least one author is affiliated with that organization.
-        """
-    )
-    
-    # Search for organization (use pre-computed lists)
-    org_query_tab7 = st.text_input("Search for an organization", key="org_papers_search")
-    
-    if org_query_tab7:
-        # Fuzzy search for orgs
-        q_lower = org_query_tab7.lower()
-        matches = [(org, 100 if q_lower in org.lower() else 0) for org in all_orgs_list_global]
-        matches = [(org, score) for org, score in matches if score > 0]
-        
-        # If no substring matches, use fuzzy
-        if not matches:
-            from rapidfuzz import process, fuzz
-            fuzzy_results = process.extract(org_query_tab7, all_orgs_list_global, scorer=fuzz.WRatio, limit=10)
-            matches = [(name, score) for name, score, _ in fuzzy_results if score >= 60]
-        
-        matches = sorted(matches, key=lambda x: (-x[1], x[0]))[:10]
-        
-        if not matches:
-            st.info("No matching organizations found.")
-        else:
-            org_names_tab7 = [name for name, score in matches]
-            selected_org_tab7 = st.radio("Select an organization:", options=org_names_tab7, key="org_papers_select")
-            
-            if selected_org_tab7:
-                st.markdown("---")
-                
-                # Filters row: year range and thread
-                col_year_tab7, col_thread_tab7 = st.columns(2)
-                
-                with col_year_tab7:
-                    year_min_tab7, year_max_tab7 = st.slider(
-                        "Year range",
-                        min_value=int(df["Year"].min()),
-                        max_value=int(df["Year"].max()),
-                        value=(int(df["Year"].min()), int(df["Year"].max())),
-                        key="org_papers_year_filter"
-                    )
-                
-                with col_thread_tab7:
-                    # Thread filter (use pre-computed list)
-                    selected_threads_tab7 = st.multiselect(
-                        "Filter by thread (leave empty for all)",
-                        options=all_threads_global,
-                        default=[],
-                        key="org_papers_thread_filter"
-                    )
-                
-                # Find all papers by this organization
-                org_papers = []
-                
-                for idx, row in df.iterrows():
-                    # Check year filter
-                    paper_year = row.get('Year')
-                    if paper_year is not None and (paper_year < year_min_tab7 or paper_year > year_max_tab7):
-                        continue
-                    
-                    # Check thread filter
-                    if selected_threads_tab7 and row.get('Category') not in selected_threads_tab7:
-                        continue
-                    
-                    authors_list = coauthors.parse_authors(row['Authors'])
-                    
-                    # Check if any author is from the selected org
-                    has_org_author = False
-                    for author in authors_list:
-                        org = author_org_mapping_global.get(author) or author_org_mapping_global.get(coauthors.normalize_author_name(author))
-                        if org == selected_org_tab7:
-                            has_org_author = True
-                            break
-                    
-                    if has_org_author:
-                        org_papers.append({
-                            'Title': row.get('Title', ''),
-                            'Year': row.get('Year', ''),
-                            'Authors': row.get('Authors', ''),
-                            'Thread': row.get('Category', ''),
-                            'Abstract': row.get('Abstract', '')
-                        })
-                
-                if org_papers:
-                    papers_df = pd.DataFrame(org_papers)
-                    papers_df = papers_df.sort_values('Year', ascending=False)
-                    papers_df.index = range(1, len(papers_df) + 1)
-                    
-                    # Build filter note
-                    filter_notes = []
-                    if year_min_tab7 != int(df["Year"].min()) or year_max_tab7 != int(df["Year"].max()):
-                        filter_notes.append(f"{year_min_tab7}–{year_max_tab7}")
-                    if selected_threads_tab7:
-                        filter_notes.append("selected threads")
-                    filter_note = f" ({', '.join(filter_notes)})" if filter_notes else ""
-                    
-                    st.markdown(f"**{selected_org_tab7}**: {len(papers_df)} paper{'s' if len(papers_df) != 1 else ''}{filter_note}")
-                    
-                    st.caption("Double-click a cell to read full text.")
-                    st.dataframe(papers_df, use_container_width=True)
-                else:
-                    st.info(f"No papers found for **{selected_org_tab7}** with the current filters.")
-
-
-# -----------------------
-# Tab 6: Organization Rankings
-# -----------------------
-
-with tab6:
-    st.header("Organization Rankings")
-    
-    st.markdown(
-        """
-        Rank organizations by number of conference papers.
+        Explore papers by organization. Select an organization from the rankings or search to see all papers 
+        where at least one author is affiliated with that organization.
         
         *Note: Organization data is available for only a subset of authors.*
         """
     )
     
-    # Thread filter (use pre-computed list)
-    col_thread_tab6, col_top_n = st.columns([2, 1])
+    # Filters row: year, thread, and top N
+    col_year_tab6, col_thread_tab6, col_top_n = st.columns([2, 2, 1])
+    
+    with col_year_tab6:
+        year_min_tab6, year_max_tab6 = st.slider(
+            "Year range",
+            min_value=int(df["Year"].min()),
+            max_value=int(df["Year"].max()),
+            value=(int(df["Year"].min()), int(df["Year"].max())),
+            key="org_papers_year_filter"
+        )
     
     with col_thread_tab6:
         selected_threads_tab6 = st.multiselect(
             "Filter by thread (leave empty for all)",
             options=all_threads_global,
             default=[],
-            key="org_rankings_thread_filter"
+            key="org_papers_thread_filter"
         )
     
     with col_top_n:
-        top_n_orgs = st.slider("Number of organizations to show", 10, 100, 30, key="org_rankings_top_n")
+        top_n_orgs = st.slider("Top N orgs", 10, 100, 30, key="org_papers_top_n")
     
-    # Filter papers by thread if selected
+    # Filter papers by year and thread
+    df_for_ranking = df.copy()
+    df_for_ranking = df_for_ranking[df_for_ranking["Year"].between(year_min_tab6, year_max_tab6)]
     if selected_threads_tab6:
-        df_for_ranking = df[df["Category"].isin(selected_threads_tab6)]
-    else:
-        df_for_ranking = df
+        df_for_ranking = df_for_ranking[df_for_ranking["Category"].isin(selected_threads_tab6)]
     
     # Count papers per organization (use global mapping)
     org_paper_counts = {}
@@ -315,12 +216,27 @@ with tab6:
         
         # Stats
         total_papers = len(df_for_ranking)
-        thread_note = f" in selected thread(s)" if selected_threads_tab6 else ""
-        st.caption(f"**{len(org_paper_counts)}** organizations represented in **{papers_with_org:,}** of **{total_papers:,}** papers{thread_note}")
+        filter_notes = []
+        if year_min_tab6 != int(df["Year"].min()) or year_max_tab6 != int(df["Year"].max()):
+            filter_notes.append(f"{year_min_tab6}–{year_max_tab6}")
+        if selected_threads_tab6:
+            filter_notes.append("selected threads")
+        filter_note = f" ({', '.join(filter_notes)})" if filter_notes else ""
         
-        st.dataframe(ranking_df, use_container_width=True)
+        st.caption(f"**{len(org_paper_counts)}** organizations represented in **{papers_with_org:,}** of **{total_papers:,}** papers{filter_note}")
         
-        # Simple bar chart
+        # Clickable dataframe for organization selection
+        st.subheader("Organization Rankings")
+        st.caption("Click on a row to see papers from that organization")
+        
+        selection = st.dataframe(
+            ranking_df,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
+        )
+        
+        # Bar chart
         st.subheader("Top 20 Organizations")
         
         chart_df = ranking_df.head(20).copy()
@@ -342,6 +258,50 @@ with tab6:
         )
         
         st.plotly_chart(fig, use_container_width=True)
+        
+        # Get selected organization from table
+        selected_rows = selection.selection.rows if selection.selection else []
+        
+        if selected_rows:
+            selected_idx = selected_rows[0]
+            selected_org_tab6 = ranking_df.iloc[selected_idx]['Organization']
+            
+            st.markdown("---")
+            st.subheader(f"Papers from {selected_org_tab6}")
+            
+            # Find all papers by this organization (using already filtered df_for_ranking)
+            org_papers = []
+            
+            for idx, row in df_for_ranking.iterrows():
+                authors_list = coauthors.parse_authors(row['Authors'])
+                
+                # Check if any author is from the selected org
+                has_org_author = False
+                for author in authors_list:
+                    org = author_org_mapping_global.get(author) or author_org_mapping_global.get(coauthors.normalize_author_name(author))
+                    if org == selected_org_tab6:
+                        has_org_author = True
+                        break
+                
+                if has_org_author:
+                    org_papers.append({
+                        'Title': row.get('Title', ''),
+                        'Year': row.get('Year', ''),
+                        'Authors': row.get('Authors', ''),
+                        'Thread': row.get('Category', ''),
+                        'Abstract': row.get('Abstract', '')
+                    })
+            
+            if org_papers:
+                papers_df = pd.DataFrame(org_papers)
+                papers_df = papers_df.sort_values('Year', ascending=False)
+                papers_df.index = range(1, len(papers_df) + 1)
+                
+                st.markdown(f"**{len(papers_df)}** paper{'s' if len(papers_df) != 1 else ''}")
+                st.caption("Double-click a cell to read full text.")
+                st.dataframe(papers_df, use_container_width=True)
+            else:
+                st.info(f"No papers found for **{selected_org_tab6}**.")
     else:
         st.info("No organization data available for the selected filters.")
 
