@@ -1062,6 +1062,29 @@ with tab1:
     author_stats_normalized = author_stats.copy()
     author_stats_normalized["Author"] = author_stats_normalized["Author"].apply(coauthors.normalize_author_name)
     
+    # Merge duplicate authors (caused by inconsistent quoting in original data)
+    # Sum NumPapers, take max NumCoauthors, keep first non-null Country/Organization
+    author_stats_normalized = author_stats_normalized.groupby("Author", as_index=False).agg({
+        "NumPapers": "sum",
+        "NumCoauthors": "max",
+        "Country": "first",
+        "Organization": "first"
+    })
+    
+    # Fill in Country/Organization from other records if first was null
+    # (Re-aggregate to get first non-null values)
+    for col in ["Country", "Organization"]:
+        if col in author_stats.columns:
+            # Get first non-null value for each normalized author
+            non_null_values = author_stats.copy()
+            non_null_values["Author"] = non_null_values["Author"].apply(coauthors.normalize_author_name)
+            non_null_values = non_null_values.dropna(subset=[col])
+            non_null_map = non_null_values.groupby("Author")[col].first().to_dict()
+            
+            # Fill nulls in our aggregated dataframe
+            mask = author_stats_normalized[col].isna()
+            author_stats_normalized.loc[mask, col] = author_stats_normalized.loc[mask, "Author"].map(non_null_map)
+    
     tbl = author_stats_normalized.merge(
         author_counts,
         on="Author",
@@ -1126,7 +1149,17 @@ with tab1:
     )
 
     # Create mapping from normalized names to original graph node names
-    normalized_to_original = {coauthors.normalize_author_name(n): n for n in G.nodes()}
+    # Handle potential duplicates by keeping all mappings
+    normalized_to_original = {}
+    for n in G.nodes():
+        norm_name = coauthors.normalize_author_name(n)
+        if norm_name not in normalized_to_original:
+            normalized_to_original[norm_name] = n
+        else:
+            # If there's a conflict, keep the one with more connections in G
+            existing = normalized_to_original[norm_name]
+            if G.degree(n) > G.degree(existing):
+                normalized_to_original[norm_name] = n
 
     # Build filtered coauthor edges (using df_filtered which has year + thread filters applied)
     edges_filtered = set()
@@ -1145,6 +1178,10 @@ with tab1:
         original_name = normalized_to_original.get(a)
         if original_name and original_name in G:
             H.add_node(a, **G.nodes[original_name])
+        else:
+            # If no mapping found, still add the node but without extra attributes
+            # This ensures all top authors appear in the network
+            H.add_node(a, num_papers=0, num_coauthors=0)
 
     # add only year-valid edges with weights from original graph
     for a, b in edges_filtered:
@@ -1156,6 +1193,10 @@ with tab1:
                 # Copy edge weight (shared papers) from original graph
                 weight = G[orig_a][orig_b].get("weight", 1)
                 H.add_edge(a, b, weight=weight)
+            elif a != b:
+                # Edge exists in filtered data but not in original graph (name mismatch)
+                # Add it anyway since we know they co-authored
+                H.add_edge(a, b, weight=1)
 
 
     if H.number_of_nodes() == 0:
