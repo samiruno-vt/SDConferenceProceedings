@@ -1138,7 +1138,7 @@ with tab1:
 
     st.subheader("Network (Top authors only)")
 
-    max_nodes = st.slider("Max nodes to display", 50, 400, 50)
+    max_nodes = st.slider("Max nodes to display", 25, 400, 25)
     size_mode = st.radio("Node size based on", ["Total Papers", "Co-authors"], horizontal=True)
 
     # pick top authors to display (from already-filtered tbl)
